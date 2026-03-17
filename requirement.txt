@@ -1,4 +1,35 @@
+
+
+# API
+fastapi
+uvicorn[standard]
+pydantic
+
+# LLM & Embedding
+openai
+langchain-text-splitters
+
+# Vector Store
+qdrant-client
+
+# Document Processing
+pypdf
+markitdown[all]
+docling
+
+# Chunking
+tiktoken       # token-aware splitting (SemanticChunkSplitter)
+numpy          # cosine similarity cho semantic chunking
+underthesea    # Vietnamese word segmentation cho BM25
+
+# Environment
+python-dotenv
+
+# Chainlit demo UI
+chainlit
+httpx
+
+sentence_transformers
 langchain
 langchain-community
 pypdf
-
