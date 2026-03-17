@@ -1,0 +1,23 @@
+[{
+  "chunk_id": "angiang_destination_01_01",
+  "doc_id": "angiang_destination_01",
+  "destination": "An Giang",
+  "category": "destination",
+  "content": {
+    "name": "An Giang",
+    "province": "An Giang",
+    "region": "Tây Nam Bộ"
+  },
+  "text": "An Giang là tỉnh duy nhất có núi ở miền Tây Nam Bộ. Tỉnh này nổi tiếng với núi Cấm, rừng tràm Trà Sư và văn hóa các dân tộc Kinh, Khmer, Chăm, Hoa. An Giang cũng có chợ nổi Long Xuyên và di tích Miếu Bà Chúa Xứ Núi Sam."
+},
+{
+  "chunk_id": "angiang_food_bun_ca_01_01",
+  "doc_id": "angiang_food_bun_ca_01",
+  "destination": "An Giang",
+  "category": "food",
+  "content": {
+    "name": "Bún cá Châu Đốc"
+  },
+  "text": "Một tô bún cá Châu Đốc luôn biết cách níu giữ thực khách phương xa. Khác với bún nước lèo miền Tây, bún cá Châu Đốc mang trong mình hương vị riêng biệt, đậm nét và luôn được du khách săn đón."
+}
+]
