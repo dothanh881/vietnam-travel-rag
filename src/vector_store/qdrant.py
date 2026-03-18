@@ -62,10 +62,7 @@ class TravelVectorStore:
         self.client.upsert(collection_name=self.collection_name, points=points)
         return len(points)
 
-    def search_travel(self, query_vector: list[float], destination: str = None, category: str = None, top_k: int = 5):
-        """
-        Tìm kiếm có hỗ trợ lọc theo địa danh và hạng mục.
-        """
+    def search_travel(self, query_vector, destination=None, category=None, top_k=5):
         search_filter = None
         conditions = []
 
@@ -84,4 +81,17 @@ class TravelVectorStore:
             limit=top_k,
             with_payload=True
         )
-        return results
+
+        formatted = []
+        for r in results:
+            payload = r.payload or {}
+
+            formatted.append({
+                "text": payload.get("text"),
+                "destination": payload.get("destination"),
+                "category": payload.get("category"),
+                "content": payload.get("content"),
+                "score": r.score
+            })
+
+        return formatted
