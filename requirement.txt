@@ -33,3 +33,8 @@ sentence_transformers
 langchain
 langchain-community
 pypdf
+
+transformers
+accelerate
+bitsandbytes
+sentencepiece
