@@ -61,23 +61,26 @@ class TravelVectorStore:
         self.client.upsert(collection_name=self.collection_name, points=points)
         return len(points)
 
-    def search_travel(self, query_vector, destination=None, category=None, top_k=5):
+    def search_travel(self, query_vector, destination=None, category=None, top_k=5, score_threshold=0.3):
         search_filter = None
         conditions = []
 
-        if destination:
-            conditions.append(FieldCondition(key="destination", match=MatchValue(value=destination)))
-        if category:
-            conditions.append(FieldCondition(key="category", match=MatchValue(value=category)))
+        # if destination:
+        #     conditions.append(FieldCondition(key="destination", match=MatchValue(value=destination)))
+        # if category:
+        #     conditions.append(FieldCondition(key="category", match=MatchValue(value=category)))
+        #
+        # if conditions:
+        #     search_filter = Filter(must=conditions)
 
-        if conditions:
-            search_filter = Filter(must=conditions)
+        print(f" [DEBUG QDRANT] Đang tìm kiếm với - Dest: {destination} | Cat: {category}")
 
         results = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
-            query_filter=search_filter,
+            query_filter=search_filter,  # Lúc này search_filter đang là None
             limit=top_k,
+            score_threshold=score_threshold,
             with_payload=True
         )
 
