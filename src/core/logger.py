@@ -93,7 +93,7 @@ def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     logger.addHandler(ch)
 
     # ── File handler (rotate 5 MB × 3 files) ─────────────────────────────────
-    log_file = LOG_DIR / "lex_assistant.log"
+    log_file = LOG_DIR / "travel_assistant.log"
     fh = RotatingFileHandler(
         log_file,
         maxBytes=5 * 1024 * 1024,   # 5 MB
