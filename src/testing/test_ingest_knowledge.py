@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 def run_test_ingest():
     # 1. Định nghĩa đường dẫn tới file JSON Layer 3 đã chuẩn bị [cite: 121]
-    json_path = "dataset_builder/data/chunks/angiang_chunks.json"
+    json_path = "../dataset_builder/data/chunks/angiang_chunks.json"
 
     # Kiểm tra file tồn tại trước khi chạy
     if not os.path.exists(json_path):
