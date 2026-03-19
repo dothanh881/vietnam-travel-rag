@@ -17,8 +17,7 @@ class TravelVectorStore:
         self.collection_name = collection_name
         self.dimension = dimension
 
-        # Tự động khởi tạo collection và index
-        self.recreate_collection()
+        self._ensure_collection()
 
     def recreate_collection(self):
         """Xóa và tạo lại collection."""
@@ -74,24 +73,31 @@ class TravelVectorStore:
         if conditions:
             search_filter = Filter(must=conditions)
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=search_filter,
             limit=top_k,
             with_payload=True
         )
 
+        # For new qdrant-client versions, hits live in results.points
+        hits = getattr(results, "points", results)
+
         formatted = []
-        for r in results:
-            payload = r.payload or {}
+        for r in hits:
+            # r may be a tuple (point, score) in some APIs
+            point = r[0] if isinstance(r, tuple) else r
+
+            payload = getattr(point, "payload", None) or {}
+            score = getattr(point, "score", None)
 
             formatted.append({
                 "text": payload.get("text"),
                 "destination": payload.get("destination"),
                 "category": payload.get("category"),
                 "content": payload.get("content"),
-                "score": r.score
+                "score": score
             })
 
         return formatted
