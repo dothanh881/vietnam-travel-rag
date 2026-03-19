@@ -18,7 +18,7 @@ markitdown[all]
 docling
 
 # Chunking
-tiktoken       # token-aware splitting (SemanticChunkSplitter)
+tiktoken        (SemanticChunkSplitter)
 numpy          # cosine similarity cho semantic chunking
 underthesea    # Vietnamese word segmentation cho BM25
 
