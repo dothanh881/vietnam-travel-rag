@@ -1,1 +1,0 @@
-# ghép context + question vào template.
