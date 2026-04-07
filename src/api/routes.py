@@ -1,4 +1,6 @@
 import time
+import os
+import glob
 from fastapi import APIRouter, HTTPException, Depends
 from functools import lru_cache
 from api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse, SourceChunk
@@ -9,13 +11,25 @@ from retrieval.query_analyzer import TravelQueryAnalyzer
 from retrieval.retriever import TravelRetriever
 from generator.llm import LLMGenerator
 from pipeline.rag_pipeline import TravelRAGPipeline
+from ingestion.ingest_runner import IngestRunner
+from service.bm25_encoder import TravelBM25Encoder
 
 router = APIRouter()
 
+# ==========================================
+# CONSTANTS FOR INGESTION
+# ==========================================
+DATA_LAKE_DIR = r"G:\My Drive\DataLake_baseknowledge_rag_KTLN\dataset"
+INPUT_DIR = os.path.join(DATA_LAKE_DIR, "documents")  # Nơi chứa Bản ghi Vàng
+OUTPUT_DIR = os.path.join(DATA_LAKE_DIR, "chunks")    # Nơi xuất Payload
 
 # ==========================================
 # DEPENDENCY INJECTION (Singleton)
 # ==========================================
+
+@lru_cache(maxsize=1)
+def get_bm25_encoder() -> TravelBM25Encoder:
+    return TravelBM25Encoder(vocab_path=os.path.join(DATA_LAKE_DIR, "vocab.json"))
 
 @lru_cache(maxsize=1)
 def get_embedding_service() -> EmbeddingService:
@@ -32,9 +46,9 @@ def get_retriever() -> TravelRetriever:
     return TravelRetriever(
         embedding_service=get_embedding_service(),
         search_engine=VectorSearchEngine(get_vector_store()),
-        analyzer=TravelQueryAnalyzer()
+        analyzer=TravelQueryAnalyzer(),
+        bm25_encoder=get_bm25_encoder()
     )
-
 
 @lru_cache(maxsize=1)
 def get_llm_generator() -> LLMGenerator:
@@ -94,3 +108,35 @@ def chat_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
+
+
+@lru_cache(maxsize=1)
+def get_ingest_runner() -> IngestRunner:
+    return IngestRunner(bm25_encoder=get_bm25_encoder())
+
+@router.post("/ingest", response_model=IngestResponse, tags=["RAG Ingestion"])
+def ingest_endpoint(
+        request: IngestRequest,
+        runner: IngestRunner = Depends(get_ingest_runner)
+):
+    try:
+        # Chuẩn hóa tham số (Nếu người dùng không truyền thì mặc định là "*")
+        dest = request.destination or "*"
+        cat = request.category or "*"
+        file_name = request.file_name or "*"
+        
+        # Gọi Runner xử lý toàn bộ logic
+        total_inserted = runner.run_batch(destination=dest, category=cat, file_name=file_name)
+        
+        if total_inserted == 0:
+            raise HTTPException(status_code=404, detail="Không tìm thấy file nào phù hợp với bộ lọc để Ingest.")
+            
+        return IngestResponse(
+            status="success",
+            chunks_inserted=total_inserted
+        )
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống khi ingest dữ liệu: {str(e)}")

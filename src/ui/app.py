@@ -11,13 +11,13 @@ async def start():
         [
             cl.input_widget.Select(
                 id="mode",
-                label="🤖 Chế độ mô hình (LLM)",
+                label=" Chế độ mô hình (LLM)",
                 values=["ollama", "gemini", "hf"],
                 initial_index=0,
             ),
             cl.input_widget.Slider(
                 id="top_k",
-                label="📚 Số chunk trích xuất (Top K)",
+                label=" Số chunk trích xuất (Top K)",
                 initial=5,
                 min=1,
                 max=10,
@@ -53,7 +53,7 @@ async def main(message: cl.Message):
         "mode": mode
     }
 
-    msg = cl.Message(content="*Đang phân tích câu hỏi và tìm kiếm...* 🔍")
+    msg = cl.Message(content="*Đang phân tích câu hỏi và tìm kiếm...* ")
     await msg.send()
 
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -66,7 +66,7 @@ async def main(message: cl.Message):
             sources = data.get("sources", [])
             proc_time = data.get("processing_time", 0.0)
 
-            msg.content = answer + f"\n\n*(⏱️ Hoàn thành trong: {proc_time}s)*"
+            msg.content = answer + f"\n\n*( Hoàn thành trong: {proc_time}s)*"
 
             source_elements = []
             if sources:
@@ -76,15 +76,15 @@ async def main(message: cl.Message):
                     score = src.get("score", 0.0)
                     text = src.get("text", "")
 
-                    details = f"📍 **Địa điểm:** {s_dest} | 🏷️ **Danh mục:** {s_cat} | 🎯 **Điểm:** {score:.3f}\n\n📝 **Nội dung:**\n{text}"
+                    details = f" **Địa điểm:** {s_dest} |  **Danh mục:** {s_cat} |  **Điểm:** {score:.3f}\n\n **Nội dung:**\n{text}"
 
                     source_elements.append(
-                        cl.Text(name=f"📚 Nguồn {i + 1} ({s_dest})", content=details, display="inline")
+                        cl.Text(name=f" Nguồn {i + 1} ({s_dest})", content=details, display="inline")
                     )
 
             msg.elements = source_elements
             await msg.update()
 
         except Exception as e:
-            msg.content = f"❌ **Lỗi hệ thống:** {str(e)}"
+            msg.content = f" **Lỗi hệ thống:** {str(e)}"
             await msg.update()

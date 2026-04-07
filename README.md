@@ -197,3 +197,5 @@ Swagger UI: `http://localhost:8000/docs`
 
 Truy cập giao diện: `http://localhost:8001`
 
+.\.venv\Scripts\activate
+chainlit run app.py -w --port 8001

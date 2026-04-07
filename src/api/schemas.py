@@ -13,8 +13,9 @@ class ChatRequest(BaseModel):
     mode: str = Field(default="ollama", description="Chế độ chạy LLM: 'ollama', 'gemini', hoặc 'hf'")
 
 class IngestRequest(BaseModel):
-    file_path: str = Field(..., description="Đường dẫn tới file JSON chứa dữ liệu du lịch")
-
+    destination: Optional[str] = Field(None, description="Lọc theo tỉnh/thành (VD: 'an-giang'). Nếu để trống sẽ quét tất cả.")
+    category: Optional[str] = Field(None, description="Lọc theo danh mục (VD: 'food'). Nếu để trống sẽ quét tất cả.")
+    file_name: Optional[str] = Field(None, description="Tên file cụ thể (VD: 'merged_an-giang_food_chunks.json'). Nếu để trống sẽ quét tất cả.")
 # ==========================================
 # RESPONSE SCHEMAS (Server -> Client)
 # ==========================================
