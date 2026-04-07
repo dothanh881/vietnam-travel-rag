@@ -4,7 +4,7 @@ import sys
 # Thêm thư mục gốc vào PYTHONPATH để tránh lỗi import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ingestion.pipeline import IngestionPipeline
+from ingestion.ingest_runner import IngestRunner
 from core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,12 +22,13 @@ def run_test_ingest():
     try:
         # 2. Khởi tạo Pipeline (Người điều phối)
         # Pipeline này sẽ tự gọi KnowledgeLoader và TravelVectorStore bên trong
-        pipeline = IngestionPipeline()
+        pipeline = IngestRunner()
 
         logger.info("--- BẮT ĐẦU LUỒNG TEST INGESTION ---")
 
         # 3. Chạy luồng nạp dữ liệu
-        result = pipeline.run(json_path)
+        # Sử dụng API run_batch
+        result = pipeline.run_batch(destination="an-giang", category="*", file_name="angiang_chunks.json")
 
         # 4. Kiểm tra kết quả
         if result > 0:

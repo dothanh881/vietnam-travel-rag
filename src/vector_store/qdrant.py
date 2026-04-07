@@ -7,7 +7,13 @@ from qdrant_client.models import (
     PayloadSchemaType,
     Filter,
     FieldCondition,
-    MatchValue
+    MatchValue,
+    SparseVectorParams,
+    SparseIndexParams,
+    Prefetch,
+    FusionQuery,
+    Fusion,
+    SparseVector
 )
 
 
@@ -31,29 +37,38 @@ class TravelVectorStore:
         if self.collection_name not in collections:
             self.client.create_collection(
                 collection_name=self.collection_name,
-                vectors_config=VectorParams(size=self.dimension, distance=Distance.COSINE),
+                vectors_config={"dense": VectorParams(size=self.dimension, distance=Distance.COSINE)},
+                sparse_vectors_config={
+                    "sparse": SparseVectorParams(
+                        index=SparseIndexParams(on_disk=False)
+                    )
+                }
             )
             # Tạo Payload Index để lọc theo địa danh và hạng mục cực nhanh [cite: 118, 120]
             self.client.create_payload_index(self.collection_name, "destination", PayloadSchemaType.KEYWORD)
             self.client.create_payload_index(self.collection_name, "category", PayloadSchemaType.KEYWORD)
 
-    def upsert_chunks(self, chunks: list[dict], embeddings: list[list[float]]):
+    def upsert_chunks(self, chunks: list[dict], dense_embeddings: list[list[float]], sparse_embeddings: list[SparseVector]):
         """
         Đưa tất cả các trường từ file chunk vào Payload. [cite: 104, 116]
         """
         points = []
-        for chunk, emb in zip(chunks, embeddings):
+        for chunk, emb, sparse_emb in zip(chunks, dense_embeddings, sparse_embeddings):
+            vector_dict = {"dense": emb}
+            if sparse_emb is not None:
+                vector_dict["sparse"] = sparse_emb
+                
             points.append(
                 PointStruct(
                     id=str(uuid.uuid4()),
-                    vector=emb,  # Sử dụng embedding của trường 'text' [cite: 69]
+                    vector=vector_dict,
                     payload={
                         "chunk_id": chunk.get("chunk_id"),
-                        "doc_id": chunk.get("doc_id"),
+                        "doc_id": chunk.get("parent_doc_id") or chunk.get("doc_id"),
                         "destination": chunk.get("destination"),  # Dùng để filter theo vùng miền [cite: 121]
                         "category": chunk.get("category"),  # Dùng để filter theo loại hình (food, place) [cite: 78]
                         "content": chunk.get("content"),  # Metadata chi tiết: giá, địa chỉ... [cite: 111]
-                        "text": chunk.get("text")  # Ngữ cảnh cho LLM [cite: 101]
+                        "text": chunk.get("chunk_text") or chunk.get("text")  # Ngữ cảnh cho LLM [cite: 101]
                     }
                 )
             )
@@ -61,7 +76,7 @@ class TravelVectorStore:
         self.client.upsert(collection_name=self.collection_name, points=points)
         return len(points)
 
-    def search_travel(self, query_vector, destination=None, category=None, top_k=5, score_threshold=0.3):
+    def search_travel(self, query_vector, sparse_query, destination=None, category=None, top_k=5):
         search_filter = None
         conditions = []
 
@@ -75,14 +90,36 @@ class TravelVectorStore:
 
         print(f" [DEBUG QDRANT] Đang tìm kiếm với - Dest: {destination} | Cat: {category}")
 
-        results = self.client.query_points(
-            collection_name=self.collection_name,
-            query=query_vector,
-            query_filter=search_filter,  # Lúc này search_filter đang là None
-            limit=top_k,
-            score_threshold=score_threshold,
-            with_payload=True
-        )
+        results = None
+        if sparse_query:
+            results = self.client.query_points(
+                collection_name=self.collection_name,
+                prefetch=[
+                    Prefetch(
+                        query=query_vector,
+                        using="dense",
+                        limit=top_k * 2,
+                        filter=search_filter
+                    ),
+                    Prefetch(
+                        query=sparse_query,
+                        using="sparse",
+                        limit=top_k * 2,
+                        filter=search_filter
+                    )
+                ],
+                query=FusionQuery(fusion=Fusion.RRF),
+                limit=top_k,
+                with_payload=True
+            )
+        else:
+            results = self.client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                query_filter=search_filter,
+                limit=top_k,
+                with_payload=True
+            )
 
         # For new qdrant-client versions, hits live in results.points
         hits = getattr(results, "points", results)

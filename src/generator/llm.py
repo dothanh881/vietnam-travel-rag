@@ -1,5 +1,6 @@
 import os
 import torch
+import re
 
 # Import các thư viện API bên ngoài (Cần pip install ollama google-generativeai)
 try:
@@ -75,12 +76,21 @@ class LLMGenerator:
         prompt_dict = self._build_prompt(context, question)
 
         # 3. Điều hướng bộ sinh text tùy theo mode
+        ans = ""
         if self.mode == "hf":
-            return self._generate_hf(prompt_dict)
+            ans = self._generate_hf(prompt_dict)
         elif self.mode == "ollama":
-            return self._generate_ollama(prompt_dict)
+            ans = self._generate_ollama(prompt_dict)
         elif self.mode == "gemini":
-            return self._generate_gemini(prompt_dict)
+            ans = self._generate_gemini(prompt_dict)
+            
+        # 4. Hậu kỳ (Post-processing) dọn dẹp rác từ SLM
+        # Xóa khối <think>...</think> do model bản DeepSeek-distilled tự sinh ra
+        ans = re.sub(r'<think>.*?</think>\s*', '', ans, flags=re.DOTALL)
+        # Quét nốt các mảnh vỡ tag còn sót lại
+        ans = ans.replace('</think>', '').replace('<think>', '').strip()
+        
+        return ans
 
     # ==================================================
     # CONTEXT & PROMPT (Dùng chung cho cả 3 mode)
@@ -115,11 +125,33 @@ class LLMGenerator:
             return f"Thời gian: {content.get('duration')}\nLịch trình: {content.get('schedule')}"
         return ""
 
+    def _load_system_prompt(self):
+        try:
+            # Tính toán đường dẫn tới system_prompt_travel.md nằm ngoài src/
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            prompt_path = os.path.join(base_dir, "system_prompt_travel.md")
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            return "Bạn là trợ lý du lịch AI am hiểu về Việt Nam. Chỉ trả lời dựa trên thông tin được cung cấp trong ngữ cảnh."
+            
     def _build_prompt(self, context, question):
-        # Trả về Dictionary để các hàm generate tự parse theo chuẩn API của nó
+        # Đọc trực tiếp template từ file
+        template = self._load_system_prompt()
+        
+        # Nếu template dùng chuẩn tag {} mới
+        if "{context}" in template and "{query}" in template:
+            user_prompt = template.replace("{context}", context).replace("{query}", question)
+            # Nâng cấp System Prompt
+            system_prompt = "Bạn là ViVu, trợ lý du lịch AI am hiểu về Việt Nam. Nhiệm vụ tối thượng của bạn là trả lời DỰA HOÀN TOÀN VÀO NGỮ CẢNH cung cấp. Tuyệt đối không tự bịa đặt thông tin ngoài ngữ cảnh."
+        else:
+            # Fallback nếu dùng prompt cũ
+            system_prompt = template
+            user_prompt = f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
+            
         return {
-            "system": "Bạn là trợ lý du lịch AI am hiểu về Việt Nam. Chỉ trả lời dựa trên thông tin được cung cấp trong ngữ cảnh. Nếu không có thông tin, hãy nói 'Mình chưa có thông tin về vấn đề này'.",
-            "user": f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
+            "system": system_prompt,
+            "user": user_prompt
         }
 
     # ==================================================
@@ -132,9 +164,15 @@ class LLMGenerator:
             {"role": "system", "content": prompt_dict["system"]},
             {"role": "user", "content": prompt_dict["user"]}
         ]
+        
+        # Tạo chuỗi ChatML
         prompt_text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
+        
+        # KỸ THUẬT MỒI CHỮ (PRE-FILL): Ép thẳng vào đuôi chuỗi
+        prefill_text = "🌴 Chào bạn, theo cẩm nang của ViVu, đây là những gợi ý:\n"
+        prompt_text += prefill_text
 
         inputs = self.tokenizer(
             prompt_text, return_tensors="pt", truncation=True, max_length=2048
@@ -144,15 +182,20 @@ class LLMGenerator:
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=512,
-                temperature=0.1,
-                do_sample=False,
+                temperature=0.3,       # Nâng từ 0.1 lên 0.3 cho tự nhiên
+                repetition_penalty=1.15, # Chống lặp từ
+                do_sample=True,        # Phải là True nếu dùng temperature > 0
                 eos_token_id=self.tokenizer.eos_token_id,
                 pad_token_id=self.tokenizer.pad_token_id
             )
 
+        # Cắt bỏ phần prompt đầu vào để lấy kết quả
         input_length = inputs['input_ids'].shape[1]
         generated_tokens = outputs[0][input_length:]
-        return self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        ans = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        
+        # Ghép lại phần đã mồi
+        return prefill_text + ans
 
     def _generate_ollama(self, prompt_dict):
         """Xử lý gọi qua Ollama local server"""
@@ -162,9 +205,23 @@ class LLMGenerator:
         ]
         response = ollama.chat(
             model=self.ollama_model,
-            messages=messages
+            messages=messages,
+            options={
+                "temperature": 0.1,    # Ép nhiệt độ thấp để tránh model bịa chuyện hoặc lặp từ vô tận
+                "num_predict": 512
+            }
         )
-        return response['message']['content'].strip()
+        ans = response['message']['content'].strip()
+        
+        # Xóa thẻ <think> do các model họ DeepSeek (như Qwen R1) sinh ra
+        ans = re.sub(r'<think>.*?</think>\s*', '', ans, flags=re.DOTALL)
+        ans = ans.replace('</think>', '').replace('<think>', '').strip()
+        
+        # Nếu model lười không sinh hình cây dừa (do bị User mồi trong prompt), ta chủ động bù vào
+        if not ans.startswith('🌴'):
+            ans = '🌴 ' + ans
+            
+        return ans
 
     def _generate_gemini(self, prompt_dict):
         """Xử lý gọi qua Gemini Cloud API"""
