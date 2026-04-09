@@ -11,8 +11,8 @@ async def start():
         [
             cl.input_widget.Select(
                 id="mode",
-                label=" Chế độ mô hình (LLM)",
-                values=["ollama", "gemini", "hf"],
+                label=" Chọn Động cơ Suy luận (LLM)",
+                values=["vllm", "ollama"],
                 initial_index=0,
             ),
             cl.input_widget.Slider(
@@ -46,10 +46,11 @@ async def main(message: cl.Message):
     mode = settings.get("mode", "ollama")
     top_k = settings.get("top_k", 3)
 
-    # Payload gửi xuống backend chỉ còn query và top_k
+    # Payload gửi xuống backend giờ bao gồm cả mode
     payload = {
         "query": message.content,
-        "top_k": int(top_k)
+        "top_k": int(top_k),
+        "mode": mode
     }
 
     API_URL_STREAM = API_URL + "/stream"

@@ -1,52 +1,60 @@
 import time
-from sentence_transformers import CrossEncoder
+import os
+import cohere
 from core.logger import get_logger
+from dotenv import load_dotenv
 
+load_dotenv()
 logger = get_logger(__name__)
 
-class Reranker:
+class CohereReranker:
     """
-    Reranker sử dụng mô hình Cross-Encoder chuyên dụng (bge-reranker-m3).
-    Tối ưu cho Tiếng Việt, tốc độ siêu nhanh, chấm điểm chính xác.
+    Reranker sử dụng Cohere Rerank API (Cloud).
+    Model: rerank-multilingual-v3.0 (Tốt nhất cho tiếng Việt).
     """
-    def __init__(self, model_name: str = "BAAI/bge-reranker-base"):
-        logger.info(f"Đang nạp mô hình Reranker: {model_name}...")
+    def __init__(self, api_key: str = None, model: str = "rerank-multilingual-v3.0"):
+        self.api_key = api_key or os.getenv("COHERE_API_KEY")
+        if not self.api_key:
+            logger.error("COHERE_API_KEY không được tìm thấy trong môi trường (.env)")
+            raise ValueError("Vui lòng cấu hình COHERE_API_KEY trong file .env")
         
-        import torch
-        # Tự động lấy device tương thích để tránh lỗi Torch not compiled with CUDA
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Chạy Reranker trên thiết bị: {device}")
-        
-        # local_files_only=True để tránh check update lên HuggingFace khi server HF bị lỗi
-        self.model = CrossEncoder(model_name, max_length=512, device=device, local_files_only=True)
-        logger.info("Nạp Reranker thành công!")
+        self.client = cohere.Client(self.api_key)
+        self.model = model
+        logger.info(f"CohereReranker khởi tạo thành công với model: {self.model}")
 
     def rerank(self, query: str, candidates: list[dict], top_n: int = 5) -> list[dict]:
         if not candidates:
             return []
 
         top_n = min(top_n, len(candidates))
-        logger.info(f"Đang Rerank {len(candidates)} candidates -> Lấy Top {top_n}")
+        logger.info(f"Đang Rerank {len(candidates)} candidates qua Cohere -> Lấy Top {top_n}")
         t0 = time.perf_counter()
 
-        # Tạo danh sách các cặp [Câu hỏi, Tài liệu]
-        # Cross-Encoder yêu cầu đầu vào là 1 mảng các cặp câu
-        sentence_pairs = [[query, doc["text"]] for doc in candidates]
+        # Trích xuất nội dung text để gửi lên API
+        documents = [c.get("text", "") for c in candidates]
 
-        # Model tự động tính điểm cho tất cả các cặp trong 1 nốt nhạc
-        scores = self.model.predict(sentence_pairs)
+        try:
+            # Gọi API Cohere
+            response = self.client.rerank(
+                model=self.model,
+                query=query,
+                documents=documents,
+                top_n=top_n
+            )
 
-        # Gắn điểm vào candidates và sắp xếp
-        scored_candidates = []
-        for doc, score in zip(candidates, scores):
-            doc["rerank_score"] = float(score) # Điểm số là 1 số float
-            scored_candidates.append(doc)
+            # Khớp lại kết quả với dữ liệu gốc
+            scored_candidates = []
+            for result in response.results:
+                original_idx = result.index
+                doc = candidates[original_idx].copy()
+                doc["rerank_score"] = float(result.relevance_score)
+                scored_candidates.append(doc)
 
-        # Sắp xếp từ cao xuống thấp
-        scored_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-        top_results = scored_candidates[:top_n]
-
-        elapsed = time.perf_counter() - t0
-        logger.info(f"Reranking hoàn tất trong {elapsed:.2f}s")
-        
-        return top_results
+            elapsed = time.perf_counter() - t0
+            logger.info(f"Cohere Reranking hoàn tất trong {elapsed:.2f}s cho {len(scored_candidates)} kết quả.")
+            return scored_candidates
+            
+        except Exception as e:
+            logger.error(f"Lỗi khi gọi Cohere Rerank API: {str(e)}")
+            # Nếu lỗi API, trả về kết quả gốc để không làm hỏng luồng RAG
+            return candidates[:top_n]

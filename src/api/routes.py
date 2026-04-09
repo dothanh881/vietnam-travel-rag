@@ -15,7 +15,7 @@ from generator.llm import LLMGenerator
 from pipeline.rag_pipeline import TravelRAGPipeline
 from ingestion.ingest_runner import IngestRunner
 from service.bm25_encoder import TravelBM25Encoder
-from retrieval.reranker import Reranker
+from retrieval.reranker import CohereReranker
 
 router = APIRouter()
 
@@ -60,16 +60,17 @@ def get_llm_generator() -> LLMGenerator:
     NGROK_URL = "https://unpatrician-underogatively-bronson.ngrok-free.dev/v1" 
     
     return LLMGenerator(
-        ollama_model="qwen-vivu", # Khớp với thông số --served-model-name trên vLLM Colab
-        base_url=NGROK_URL,
-        api_key="sk-runpod-key" # API Key giả lập
+        mode="vllm", # Mặc định
+        vllm_model="qwen-vivu", 
+        vllm_base_url=NGROK_URL,
+        vllm_api_key="sk-runpod-key",
+        ollama_model="hf.co/Qwen/Qwen2.5-3B-Instruct-GGUF:Q4_K_M"
     )
 
 @lru_cache(maxsize=1)
-def get_reranker() -> Reranker:
-    # TẮT RERANKER ĐỂ ĐẠT TỐC ĐỘ DEMO TỐI ƯU (Tránh delay 41s trên CPU)
-    return None
-    # return Reranker(model_name="BAAI/bge-reranker-base")
+def get_reranker() -> CohereReranker:
+    # Bật lại Reranker, sử dụng Cohere Siêu tốc độ trên Cloud
+    return CohereReranker()
 
 @lru_cache(maxsize=1)
 def get_rag_pipeline() -> TravelRAGPipeline:
@@ -92,7 +93,8 @@ def chat_endpoint(
 ):
     start_time = time.time()
     try:
-        # Lớp LLMGenerator mới sử dụng 1 luồng duy nhất cho Ollama
+        # Cập nhật chế độ chạy dựa trên yêu cầu từ UI
+        generator.mode = request.mode
 
         answer, raw_chunks = pipeline.ask(
             question=request.query,
@@ -127,13 +129,17 @@ def chat_endpoint(
 @router.post("/chat/stream", tags=["RAG Chat Stream"])
 def chat_stream_endpoint(
         request: ChatRequest,
-        pipeline: TravelRAGPipeline = Depends(get_rag_pipeline)
+        pipeline: TravelRAGPipeline = Depends(get_rag_pipeline),
+        generator: LLMGenerator = Depends(get_llm_generator)
 ):
     async def event_generator():
         start_time = time.time()
         try:
+            # Cập nhật chế độ chạy dựa trên yêu cầu từ UI
+            generator.mode = request.mode
+            
             # 1. Báo cáo trạng thái ngay để mở luồng mượt mà
-            yield f"data: {json.dumps({'type': 'status', 'data': '* Đang tìm kiếm tài liệu...* ⏳'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'data': f'* Đang tìm kiếm tài liệu (Chế độ: {generator.mode})...* ⏳'})}\n\n"
             
             # 2. Bắt đầu quá trình RAG
             answer_stream, raw_chunks = await pipeline.ask_stream(

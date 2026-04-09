@@ -10,18 +10,37 @@ class LLMGenerator:
     Trình sinh văn bản tinh gọn, chạy độc quyền qua Ollama Local API.
     """
 
-    def __init__(self, ollama_model: str = "qwen2.5:3b", temperature: float = 0.1, base_url: str = None, api_key: str = "sk-no-key"):
-        self.model = ollama_model
+    def __init__(
+        self, 
+        mode: str = "vllm", 
+        vllm_model: str = "qwen-vivu", 
+        vllm_base_url: str = None, 
+        vllm_api_key: str = "sk-no-key",
+        ollama_model: str = "hf.co/Qwen/Qwen2.5-3B-Instruct-GGUF:Q4_K_M",
+        temperature: float = 0.1
+    ):
+        self.mode = mode
         self.temperature = temperature
-        self.base_url = base_url
-        self.api_key = api_key
         self.system_prompt = self._load_system_prompt()
         
-        # Tạo sẵn client để reuse connection (giảm latency)
-        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
-        self.async_client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+        # 1. Cấu hình cho vLLM (Cloud / Colab)
+        self.vllm_model = vllm_model
+        self.vllm_client = OpenAI(base_url=vllm_base_url, api_key=vllm_api_key)
+        self.async_vllm_client = AsyncOpenAI(base_url=vllm_base_url, api_key=vllm_api_key)
         
-        logger.info(f"[LLMGenerator] Đã khởi tạo thành công với model: {self.model} qua OpenAI API format")
+        # 2. Cấu hình cho Ollama (Desktop Local)
+        self.ollama_model = ollama_model
+        self.ollama_client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        self.async_ollama_client = AsyncOpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        
+        logger.info(f"[LLMGenerator] Đã khởi tạo thành công (Chế độ mặc định: {self.mode})")
+
+    def _get_active_config(self):
+        """Lấy đúng Config (Model, Client) dựa trên chế độ hiện tại."""
+        if self.mode == "ollama":
+            return self.ollama_model, self.ollama_client, self.async_ollama_client
+        else: # "vllm"
+            return self.vllm_model, self.vllm_client, self.async_vllm_client
 
     def _load_system_prompt(self) -> str:
         """Đọc file system_prompt_travel.md từ thư mục gốc."""
@@ -38,14 +57,15 @@ class LLMGenerator:
     def generate(self, prompt: str, user_input: str, temperature: float = None) -> str:
         """Hàm gọi API OpenAI/vLLM nguyên thủy."""
         temp = temperature if temperature is not None else self.temperature
+        active_model, active_client, _ = self._get_active_config()
         
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": user_input}
         ]
         
-        response = self.client.chat.completions.create(
-            model=self.model,
+        response = active_client.chat.completions.create(
+            model=active_model,
             messages=messages,
             temperature=temp,
             frequency_penalty=0.1
@@ -87,14 +107,15 @@ class LLMGenerator:
     async def generate_stream(self, prompt: str, user_input: str, temperature: float = None):
         """Hàm stream từng token (Server-Sent Events) qua OpenAI API."""
         temp = temperature if temperature is not None else self.temperature
+        active_model, _, active_async_client = self._get_active_config()
         
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": user_input}
         ]
         
-        response_stream = await self.async_client.chat.completions.create(
-            model=self.model,
+        response_stream = await active_async_client.chat.completions.create(
+            model=active_model,
             messages=messages,
             stream=True,
             temperature=temp,
