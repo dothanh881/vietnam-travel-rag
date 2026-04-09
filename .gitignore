@@ -2,3 +2,5 @@
 src/ui/.files/
 
 .chainlit/
+
+.pyc
