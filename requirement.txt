@@ -38,3 +38,5 @@ transformers
 accelerate
 bitsandbytes
 sentencepiece
+
+cohere

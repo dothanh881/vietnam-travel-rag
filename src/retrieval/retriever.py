@@ -1,3 +1,7 @@
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
 class TravelRetriever:
     def __init__(self, embedding_service, search_engine, analyzer, bm25_encoder=None):
         self.embedding_service = embedding_service
@@ -5,32 +9,38 @@ class TravelRetriever:
         self.analyzer = analyzer
         self.bm25_encoder = bm25_encoder
 
-    def retrieve(self, query: str, top_k: int = 5, destination: str = None, category: str = None):
-        # 1. Phân tích câu hỏi để tự động tìm tỉnh/thành và danh mục
-        analyzed = self.analyzer.analyze(query)
+    def retrieve(self, query: str, top_k: int = 5, destination: str = None):
+        # SIÊU TỐC ĐỘ: Dùng trực tiếp query để tìm kiếm
+        search_query = query
+        final_destination = destination
 
-        # 2. Gộp dữ liệu: Ưu tiên những gì AI phân tích được từ câu hỏi,
-        # nếu không có thì mới xài cái UI truyền xuống (destination, category)
-        final_destination = analyzed.get("destination") or destination
+        # NHẬN DIỆN ĐỊA DANH THÔNG MINH (Bằng từ khóa để bỏ qua LLM delay)
+        query_lower = query.lower()
+        if "đà lạt" in query_lower:
+            final_destination = "Đà Lạt"
+        elif "an giang" in query_lower:
+            final_destination = "An Giang"
+        elif "phú quốc" in query_lower:
+            final_destination = "Phú Quốc"
 
-        # Intent từ analyzer ('food', 'place'...) sẽ biến thành category
-        final_category = analyzed.get("intent") if analyzed.get("intent") != "general" else category
+        logger.info(f" [Retriever] Fast Search Query: {search_query} | Auto-Dest: {final_destination}")
 
-        # 3. Biến câu hỏi thành Vector
-        query_vector = self.embedding_service.embed_query(query)
+        # 3. Chuyển đổi sang Vectors dùng expanded_query
+        # Dense Vector (Semantic)
+        query_vector = self.embedding_service.embed_query(search_query)
         
-        # Tạo Sparse vector bằng BM25
+        # Sparse Vector (Keyword matching)
         sparse_vector = None
-        if self.bm25_encoder and self.bm25_encoder._fitted:
-            sparse_vector = self.bm25_encoder.encode_query(query)
+        if self.bm25_encoder:
+            # Bạn nên dùng search_query ở đây để BM25 bắt được nhiều từ khóa "địa chỉ", "giá vé" hơn
+            sparse_vector = self.bm25_encoder.encode_query(search_query)
 
-        # 4. Tìm kiếm với Search Engine (đã được bơm đầy đủ filter)
-        # Lưu ý: Tên hàm có thể là .search() hoặc .search_travel() tùy vào file search.py của bạn
+        # 4. Truy vấn Qdrant
+        # Đảm bảo hàm search này trong search_engine xử lý Filter theo "Phú Quốc" (có dấu)
         results = self.search_engine.search(
             query_vector=query_vector,
             sparse_vector=sparse_vector,
-            destination=final_destination,
-            category=final_category,
+            destination=final_destination, 
             top_k=top_k
         )
 

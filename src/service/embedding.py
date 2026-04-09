@@ -22,7 +22,7 @@ class EmbeddingService:
 
         logger.info(f"Loading embedding model: {model_name} on {self.device}")
 
-        self.model = SentenceTransformer(model_name, device=self.device)
+        self.model = SentenceTransformer(model_name, device=self.device, local_files_only=True)
 
         logger.info(f"EmbeddingService initialized | dim={self.dimension}")
 

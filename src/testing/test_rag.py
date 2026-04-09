@@ -5,6 +5,7 @@ from retrieval.query_analyzer import TravelQueryAnalyzer
 from generator.llm import LLMGenerator
 from pipeline.rag_pipeline import TravelRAGPipeline
 from vector_store.qdrant import TravelVectorStore
+from retrieval.reranker import Reranker
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
@@ -44,7 +45,15 @@ def main():
     vector_store = TravelVectorStore()
     search_engine = VectorSearchEngine(vector_store)
 
-    analyzer = TravelQueryAnalyzer()
+    # Nhập URL Ngrok nếu bạn chạy test CLI
+    NGROK_URL = "https://<xxxx-xxxx>.ngrok-free.app/v1"
+    llm_generator = LLMGenerator(
+        ollama_model="qwen-vivu", 
+        base_url=NGROK_URL, 
+        api_key="sk-runpod-key"
+    )
+
+    analyzer = TravelQueryAnalyzer(llm_generator=llm_generator)
 
     retriever = TravelRetriever(
         embedding_service=embedding,
@@ -52,10 +61,12 @@ def main():
         analyzer=analyzer
     )
 
-    llm_generator = LLMGenerator(mode="ollama", ollama_model="hf.co/Qwen/Qwen2.5-3B-Instruct-GGUF:Q4_K_M")
+    reranker = Reranker()
+
     rag_pipeline = TravelRAGPipeline(
         retriever=retriever,
-        llm_generator=llm_generator
+        llm_generator=llm_generator,
+        reranker=reranker
     )
 
     print(" System ready! Type 'exit' to quit.\n")
@@ -68,7 +79,7 @@ def main():
             print(" Bye!")
             break
 
-        answer = rag_pipeline.ask(question)
+        answer, chunks = rag_pipeline.ask(question)
 
         print(f" Bot: {answer}\n")
 

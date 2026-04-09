@@ -1,238 +1,167 @@
 import os
-import torch
 import re
+from openai import OpenAI, AsyncOpenAI
+from core.logger import get_logger
 
-# Import các thư viện API bên ngoài (Cần pip install ollama google-generativeai)
-try:
-    import ollama
-except ImportError:
-    ollama = None
-
-try:
-    import google.generativeai as genai
-except ImportError:
-    genai = None
-
+logger = get_logger(__name__)
 
 class LLMGenerator:
     """
-    Hỗ trợ 3 chế độ (mode):
-    1. 'hf': Chạy HuggingFace local (Qwen2.5 3B baseline hoặc Qwen + LoRA)
-    2. 'ollama': Chạy qua Ollama local API (Tiết kiệm RAM, dễ quản lý)
-    3. 'gemini': Chạy qua Google Gemini API (Cloud)
+    Trình sinh văn bản tinh gọn, chạy độc quyền qua Ollama Local API.
     """
 
-    def __init__(
-            self,
-            mode: str = "hf",
-            hf_model=None,
-            hf_tokenizer=None,
-            device="cuda",
-            ollama_model="qwen2.5:3b",
-            gemini_api_key=None
-    ):
-        self.mode = mode.lower()
-
-        # 1. Cấu hình mode HuggingFace (Qwen/LoRA)
-        if self.mode == "hf":
-            if hf_model is None or hf_tokenizer is None:
-                raise ValueError("Mode 'hf' yêu cầu truyền vào hf_model và hf_tokenizer.")
-            self.model = hf_model
-            self.tokenizer = hf_tokenizer
-            self.device = device
-
-        # 2. Cấu hình mode Ollama
-        elif self.mode == "ollama":
-            if ollama is None:
-                raise ImportError("Vui lòng cài đặt thư viện: pip install ollama")
-            self.ollama_model = ollama_model
-
-        # 3. Cấu hình mode Gemini
-        elif self.mode == "gemini":
-            if genai is None:
-                raise ImportError("Vui lòng cài đặt thư viện: pip install google-generativeai")
-            api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("Mode 'gemini' cần GEMINI_API_KEY.")
-            genai.configure(api_key=api_key)
-            # Sử dụng model flash cho tốc độ nhanh, phù hợp RAG
-            self.gemini_model = genai.GenerativeModel('gemini-2.5-flash')
-
-        else:
-            raise ValueError(f"Mode không hợp lệ: {self.mode}. Chọn 'hf', 'ollama', hoặc 'gemini'.")
-
-    # ==================================================
-    # MAIN API
-    # ==================================================
-
-    def generate_answer(self, question: str, chunks: list[dict]) -> str:
-        if not chunks:
-            return "Hiện tại mình chưa có thông tin trong dữ liệu về địa điểm này."
-
-        # 1. Build context
-        context = self._build_context(chunks)
-
-        # 2. Build system/user prompt cơ bản
-        prompt_dict = self._build_prompt(context, question)
-
-        # 3. Điều hướng bộ sinh text tùy theo mode
-        ans = ""
-        if self.mode == "hf":
-            ans = self._generate_hf(prompt_dict)
-        elif self.mode == "ollama":
-            ans = self._generate_ollama(prompt_dict)
-        elif self.mode == "gemini":
-            ans = self._generate_gemini(prompt_dict)
-            
-        # 4. Hậu kỳ (Post-processing) dọn dẹp rác từ SLM
-        # Xóa khối <think>...</think> do model bản DeepSeek-distilled tự sinh ra
-        ans = re.sub(r'<think>.*?</think>\s*', '', ans, flags=re.DOTALL)
-        # Quét nốt các mảnh vỡ tag còn sót lại
-        ans = ans.replace('</think>', '').replace('<think>', '').strip()
+    def __init__(self, ollama_model: str = "qwen2.5:3b", temperature: float = 0.1, base_url: str = None, api_key: str = "sk-no-key"):
+        self.model = ollama_model
+        self.temperature = temperature
+        self.base_url = base_url
+        self.api_key = api_key
+        self.system_prompt = self._load_system_prompt()
         
-        return ans
+        # Tạo sẵn client để reuse connection (giảm latency)
+        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+        self.async_client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+        
+        logger.info(f"[LLMGenerator] Đã khởi tạo thành công với model: {self.model} qua OpenAI API format")
 
-    # ==================================================
-    # CONTEXT & PROMPT (Dùng chung cho cả 3 mode)
-    # ==================================================
-
-    def _build_context(self, chunks):
-        parts = []
-        for c in chunks:
-            dest = c.get("destination", "")
-            cat = c.get("category", "")
-            content = c.get("content", {})
-            text = c.get("text", "")
-
-            structured = self._format_content(content, cat)
-            block = (
-                f"[Địa điểm: {dest} | Loại: {cat}]\n"
-                f"{structured}\n"
-                f"Mô tả: {text}"
-            )
-            parts.append(block)
-
-        return "\n---\n".join(parts)
-
-    def _format_content(self, content, category):
-        if category == "food":
-            return f"Tên: {content.get('name')}\nGiá: {content.get('average_price')}"
-        elif category == "place":
-            return f"Tên: {content.get('name')}\nĐịa chỉ: {content.get('address')}"
-        elif category == "destination":
-            return f"Tên: {content.get('name')}\nKhí hậu: {content.get('climate')}"
-        elif category == "itinerary":
-            return f"Thời gian: {content.get('duration')}\nLịch trình: {content.get('schedule')}"
-        return ""
-
-    def _load_system_prompt(self):
+    def _load_system_prompt(self) -> str:
+        """Đọc file system_prompt_travel.md từ thư mục gốc."""
         try:
-            # Tính toán đường dẫn tới system_prompt_travel.md nằm ngoài src/
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             prompt_path = os.path.join(base_dir, "system_prompt_travel.md")
             with open(prompt_path, "r", encoding="utf-8") as f:
                 return f.read().strip()
         except FileNotFoundError:
+            logger.warning("Không tìm thấy file system_prompt_travel.md. Dùng prompt mặc định.")
             return "Bạn là trợ lý du lịch AI am hiểu về Việt Nam. Chỉ trả lời dựa trên thông tin được cung cấp trong ngữ cảnh."
-            
-    def _build_prompt(self, context, question):
-        # Đọc trực tiếp template từ file
-        template = self._load_system_prompt()
+
+
+    def generate(self, prompt: str, user_input: str, temperature: float = None) -> str:
+        """Hàm gọi API OpenAI/vLLM nguyên thủy."""
+        temp = temperature if temperature is not None else self.temperature
         
-        # Nếu template dùng chuẩn tag {} mới
-        if "{context}" in template and "{query}" in template:
-            user_prompt = template.replace("{context}", context).replace("{query}", question)
-            # Nâng cấp System Prompt
-            system_prompt = "Bạn là ViVu, trợ lý du lịch AI am hiểu về Việt Nam. Nhiệm vụ tối thượng của bạn là trả lời DỰA HOÀN TOÀN VÀO NGỮ CẢNH cung cấp. Tuyệt đối không tự bịa đặt thông tin ngoài ngữ cảnh."
-        else:
-            # Fallback nếu dùng prompt cũ
-            system_prompt = template
-            user_prompt = f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
-            
-        return {
-            "system": system_prompt,
-            "user": user_prompt
-        }
-
-    # ==================================================
-    # GENERATORS CHO TỪNG MODE
-    # ==================================================
-
-    def _generate_hf(self, prompt_dict):
-        """Xử lý sinh text cho Qwen / Qwen + LoRA local"""
         messages = [
-            {"role": "system", "content": prompt_dict["system"]},
-            {"role": "user", "content": prompt_dict["user"]}
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_input}
         ]
         
-        # Tạo chuỗi ChatML
-        prompt_text = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-        
-        # KỸ THUẬT MỒI CHỮ (PRE-FILL): Ép thẳng vào đuôi chuỗi
-        prefill_text = "🌴 Chào bạn, theo cẩm nang của ViVu, đây là những gợi ý:\n"
-        prompt_text += prefill_text
-
-        inputs = self.tokenizer(
-            prompt_text, return_tensors="pt", truncation=True, max_length=2048
-        ).to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=512,
-                temperature=0.3,       # Nâng từ 0.1 lên 0.3 cho tự nhiên
-                repetition_penalty=1.15, # Chống lặp từ
-                do_sample=True,        # Phải là True nếu dùng temperature > 0
-                eos_token_id=self.tokenizer.eos_token_id,
-                pad_token_id=self.tokenizer.pad_token_id
-            )
-
-        # Cắt bỏ phần prompt đầu vào để lấy kết quả
-        input_length = inputs['input_ids'].shape[1]
-        generated_tokens = outputs[0][input_length:]
-        ans = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
-        
-        # Ghép lại phần đã mồi
-        return prefill_text + ans
-
-    def _generate_ollama(self, prompt_dict):
-        """Xử lý gọi qua Ollama local server"""
-        messages = [
-            {"role": "system", "content": prompt_dict["system"]},
-            {"role": "user", "content": prompt_dict["user"]}
-        ]
-        response = ollama.chat(
-            model=self.ollama_model,
+        response = self.client.chat.completions.create(
+            model=self.model,
             messages=messages,
-            options={
-                "temperature": 0.1,    # Ép nhiệt độ thấp để tránh model bịa chuyện hoặc lặp từ vô tận
-                "num_predict": 512
-            }
+            temperature=temp,
+            frequency_penalty=0.1
         )
-        ans = response['message']['content'].strip()
         
-        # Xóa thẻ <think> do các model họ DeepSeek (như Qwen R1) sinh ra
+        ans = response.choices[0].message.content.strip()
+        
+        # Dọn dẹp thẻ <think> đặc thù của các model hệ DeepSeek / Qwen Reasoning
         ans = re.sub(r'<think>.*?</think>\s*', '', ans, flags=re.DOTALL)
         ans = ans.replace('</think>', '').replace('<think>', '').strip()
-        
-        # Nếu model lười không sinh hình cây dừa (do bị User mồi trong prompt), ta chủ động bù vào
+        return ans
+
+
+    def generate_answer(self, question: str, chunks: list[dict]) -> str:
+        """Hàm chính thức phục vụ luồng RAG, nhận list chunks từ Qdrant."""
+        if not chunks:
+            return "Hiện tại ViVu chưa có thông tin trong dữ liệu về địa điểm/câu hỏi này."
+
+        # 1. Build context
+        context = self._build_context(chunks)
+
+        # 2. Xử lý Prompt
+        if "{context}" in self.system_prompt and "{query}" in self.system_prompt:
+            user_prompt = self.system_prompt.replace("{context}", context).replace("{query}", question)
+            system_prompt = "Bạn là ViVu, trợ lý du lịch AI am hiểu về Việt Nam. QUY TẮC SỐ 1: BẮT BUỘC chỉ trả lời thông tin có trong NGỮ CẢNH cung cấp. Tuyệt đối không bịa đặt."
+        else:
+            system_prompt = self.system_prompt
+            user_prompt = f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
+
+        # 3. Gọi lõi Generate
+        ans = self.generate(prompt=system_prompt, user_input=user_prompt)
+
+        # 4. Mồi thêm icon cho sinh động giống phiên bản cũ của bạn
         if not ans.startswith('🌴'):
             ans = '🌴 ' + ans
             
         return ans
 
-    def _generate_gemini(self, prompt_dict):
-        """Xử lý gọi qua Gemini Cloud API"""
-        # Gemini 1.5/2.0 API thường nhận system instruction trong cấu hình model,
-        # nhưng ghép thẳng vào prompt cũng hoạt động rất tốt cho RAG.
-        full_prompt = f"{prompt_dict['system']}\n\n{prompt_dict['user']}"
-
-        response = self.gemini_model.generate_content(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.1,
-            )
+    async def generate_stream(self, prompt: str, user_input: str, temperature: float = None):
+        """Hàm stream từng token (Server-Sent Events) qua OpenAI API."""
+        temp = temperature if temperature is not None else self.temperature
+        
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_input}
+        ]
+        
+        response_stream = await self.async_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            temperature=temp,
+            frequency_penalty=0.1
         )
-        return response.text.strip()
+        
+        in_think_block = False
+        async for chunk in response_stream:
+            token = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta.content else ""
+            
+            if token:
+                if "<think>" in token:
+                    in_think_block = True
+                    token = token.replace("<think>", "")
+                if "</think>" in token:
+                    in_think_block = False
+                    token = token.replace("</think>", "")
+                    continue
+                    
+                if not in_think_block and token:
+                    yield token
+
+    async def generate_answer_stream(self, question: str, chunks: list[dict]):
+        """Hàm trả về luồng text streaming cho RAG."""
+        if not chunks:
+            yield "🌴 Hiện tại ViVu chưa có thông tin trong dữ liệu về địa điểm/câu hỏi này."
+            return
+
+        context = self._build_context(chunks)
+
+        if "{context}" in self.system_prompt and "{query}" in self.system_prompt:
+            user_prompt = self.system_prompt.replace("{context}", context).replace("{query}", question)
+            system_prompt = "Bạn là ViVu, trợ lý du lịch AI am hiểu về Việt Nam. QUY TẮC SỐ 1: BẮT BUỘC chỉ trả lời thông tin có trong NGỮ CẢNH cung cấp. Tuyệt đối không bịa đặt."
+        else:
+            system_prompt = self.system_prompt
+            user_prompt = f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
+
+        yield "🌴 "
+        async for token in self.generate_stream(prompt=system_prompt, user_input=user_prompt):
+            yield token
+
+    # ==================================================
+    # UTILS FORMATTER
+    # ==================================================
+    def _build_context(self, chunks: list[dict]) -> str:
+        """Xây dựng context string từ các chunks và lọc bỏ rác văn bản mạnh tay."""
+        parts = []
+        import re
+        
+        for i, c in enumerate(chunks):
+            text_content = c.get("text", "").strip() 
+            if not text_content:
+                continue
+
+            # XỬ LÝ LỌC SẠN CẤP ĐỘ MẠNH
+            # 1. Xóa các tiêu đề markdown ###
+            text_content = text_content.replace("###", "")
+            # 2. Xóa các ký hiệu số thứ tự dạng 4.4.4 hoặc 1. 2.
+            text_content = re.sub(r'\d+(\.\d+)+', '', text_content)
+            # 3. Xóa các chữ "Ngày 1", "Sáng:", "Trưa:", "Chiều:", "Tối:"
+            text_content = re.sub(r'Ngày \d+:?', '', text_content)
+            text_content = re.sub(r'(Sáng|Trưa|Chiều|Tối):', '', text_content)
+
+            # 4. Filter đoạn prefix 'Nội dung: '
+            if "Nội dung: " in text_content:
+                text_content = text_content.split("Nội dung: ", 1)[-1].strip()
+
+            parts.append(f"- THÔNG TIN {i+1}:\n{text_content}")
+
+        return "\n\n".join(parts)

@@ -2,7 +2,9 @@ import time
 import os
 import glob
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from functools import lru_cache
+import json
 from api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse, SourceChunk
 from service.embedding import EmbeddingService
 from vector_store.qdrant import TravelVectorStore
@@ -13,6 +15,7 @@ from generator.llm import LLMGenerator
 from pipeline.rag_pipeline import TravelRAGPipeline
 from ingestion.ingest_runner import IngestRunner
 from service.bm25_encoder import TravelBM25Encoder
+from retrieval.reranker import Reranker
 
 router = APIRouter()
 
@@ -46,20 +49,34 @@ def get_retriever() -> TravelRetriever:
     return TravelRetriever(
         embedding_service=get_embedding_service(),
         search_engine=VectorSearchEngine(get_vector_store()),
-        analyzer=TravelQueryAnalyzer(),
+        analyzer=TravelQueryAnalyzer(llm_generator=get_llm_generator()),
         bm25_encoder=get_bm25_encoder()
     )
 
 @lru_cache(maxsize=1)
 def get_llm_generator() -> LLMGenerator:
-    return LLMGenerator(mode="ollama", ollama_model="hf.co/Qwen/Qwen2.5-3B-Instruct-GGUF:Q4_K_M")
+    # URL CỦA NGROK: Bạn nhớ copy Link từ Google Colab paste vào đây trước khi bắt đầu bảo vệ Đồ án nhé!
+    # LƯU Ý: Phải có hậu tố /v1 ở cuối link
+    NGROK_URL = "https://unpatrician-underogatively-bronson.ngrok-free.dev/v1" 
+    
+    return LLMGenerator(
+        ollama_model="qwen-vivu", # Khớp với thông số --served-model-name trên vLLM Colab
+        base_url=NGROK_URL,
+        api_key="sk-runpod-key" # API Key giả lập
+    )
 
+@lru_cache(maxsize=1)
+def get_reranker() -> Reranker:
+    # TẮT RERANKER ĐỂ ĐẠT TỐC ĐỘ DEMO TỐI ƯU (Tránh delay 41s trên CPU)
+    return None
+    # return Reranker(model_name="BAAI/bge-reranker-base")
 
 @lru_cache(maxsize=1)
 def get_rag_pipeline() -> TravelRAGPipeline:
     return TravelRAGPipeline(
         retriever=get_retriever(),
-        llm_generator=get_llm_generator()
+        llm_generator=get_llm_generator(),
+        reranker=get_reranker()
     )
 
 
@@ -75,15 +92,12 @@ def chat_endpoint(
 ):
     start_time = time.time()
     try:
-        # Cập nhật mode LLM nếu client có yêu cầu đổi
-        generator.mode = request.mode
+        # Lớp LLMGenerator mới sử dụng 1 luồng duy nhất cho Ollama
 
-        # Gọi RAG pipeline (đã được sửa để trả về 2 biến)
         answer, raw_chunks = pipeline.ask(
             question=request.query,
             top_k=request.top_k,
-            destination=request.destination,
-            category=request.category
+            destination=None
         )
 
         # Ánh xạ (Mapping) dữ liệu thô sang Pydantic Schema
@@ -108,6 +122,57 @@ def chat_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
+
+
+@router.post("/chat/stream", tags=["RAG Chat Stream"])
+def chat_stream_endpoint(
+        request: ChatRequest,
+        pipeline: TravelRAGPipeline = Depends(get_rag_pipeline)
+):
+    async def event_generator():
+        start_time = time.time()
+        try:
+            # 1. Báo cáo trạng thái ngay để mở luồng mượt mà
+            yield f"data: {json.dumps({'type': 'status', 'data': '* Đang tìm kiếm tài liệu...* ⏳'})}\n\n"
+            
+            # 2. Bắt đầu quá trình RAG
+            answer_stream, raw_chunks = await pipeline.ask_stream(
+                question=request.query,
+                top_k=request.top_k,
+                destination=None
+            )
+            
+            # 1. Gửi Cấu trúc Nguồn dữ liệu (Sources) trước
+            sources = []
+            for c in raw_chunks:
+                sources.append({
+                    "text": c.get("text", ""),
+                    "destination": c.get("destination"),
+                    "category": c.get("category"),
+                    "score": float(c.get("score", 0.0)),
+                    "rerank_score": c.get("rerank_score")
+                })
+                
+            yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
+            
+            # 2. Bắt đầu đẩy nội dung stream từ LLM về và tính toán thời gian
+            first_token_lat = None
+            async for token in answer_stream:
+                if first_token_lat is None:
+                    first_token_lat = round(time.time() - start_time, 2)
+                    yield f"data: {json.dumps({'type': 'status', 'data': f'*  Tốc độ phản hồi (TTFT): {first_token_lat}s*'})}\n\n"
+                
+                # Đóng gói an toàn để tránh break JSON
+                yield f"data: {json.dumps({'type': 'token', 'data': token})}\n\n"
+                
+            total_process_time = round(time.time() - start_time, 2)
+            yield f"data: {json.dumps({'type': 'status', 'data': f'*  Tổng thời gian: {total_process_time}s*'})}\n\n"
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'data': f'Lỗi hệ thống: {str(e)}'})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @lru_cache(maxsize=1)

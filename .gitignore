@@ -1,4 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+bin/
+lib/
+develop-eggs/
+dist/
+eggs/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
 
+# Byte-compiled / optimized / DLL files
+target/
+.ipynb_checkpoints
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.venv
+
+# Chainlit
+.chainlit/
 src/ui/.files/
 
-.chainlit/
+# IDE
+.vscode/
+.idea/

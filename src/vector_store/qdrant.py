@@ -44,7 +44,6 @@ class TravelVectorStore:
                     )
                 }
             )
-            # Tạo Payload Index để lọc theo địa danh và hạng mục cực nhanh [cite: 118, 120]
             self.client.create_payload_index(self.collection_name, "destination", PayloadSchemaType.KEYWORD)
             self.client.create_payload_index(self.collection_name, "category", PayloadSchemaType.KEYWORD)
 
@@ -65,10 +64,10 @@ class TravelVectorStore:
                     payload={
                         "chunk_id": chunk.get("chunk_id"),
                         "doc_id": chunk.get("parent_doc_id") or chunk.get("doc_id"),
-                        "destination": chunk.get("destination"),  # Dùng để filter theo vùng miền [cite: 121]
-                        "category": chunk.get("category"),  # Dùng để filter theo loại hình (food, place) [cite: 78]
-                        "content": chunk.get("content"),  # Metadata chi tiết: giá, địa chỉ... [cite: 111]
-                        "text": chunk.get("chunk_text") or chunk.get("text")  # Ngữ cảnh cho LLM [cite: 101]
+                        "destination": chunk.get("destination"), # Ví dụ: "An Giang"
+                        "category": chunk.get("category"),
+                        "content": chunk.get("content"),
+                        "text": chunk.get("text")
                     }
                 )
             )
@@ -76,19 +75,17 @@ class TravelVectorStore:
         self.client.upsert(collection_name=self.collection_name, points=points)
         return len(points)
 
-    def search_travel(self, query_vector, sparse_query, destination=None, category=None, top_k=5):
+    def search_travel(self, query_vector, sparse_query, destination=None, top_k=5):
         search_filter = None
         conditions = []
 
-        # if destination:
-        #     conditions.append(FieldCondition(key="destination", match=MatchValue(value=destination)))
-        # if category:
-        #     conditions.append(FieldCondition(key="category", match=MatchValue(value=category)))
-        #
-        # if conditions:
-        #     search_filter = Filter(must=conditions)
+        if destination:
+            conditions.append(FieldCondition(key="destination", match=MatchValue(value=destination)))
+        
+        if conditions:
+            search_filter = Filter(must=conditions)
 
-        print(f" [DEBUG QDRANT] Đang tìm kiếm với - Dest: {destination} | Cat: {category}")
+        print(f" [DEBUG QDRANT] Đang tìm kiếm với - Dest: {destination}")
 
         results = None
         if sparse_query:
@@ -113,9 +110,11 @@ class TravelVectorStore:
                 with_payload=True
             )
         else:
+            # Fallback chỉ dùng Dense nếu không có Sparse
             results = self.client.query_points(
                 collection_name=self.collection_name,
                 query=query_vector,
+                using="dense",
                 query_filter=search_filter,
                 limit=top_k,
                 with_payload=True
@@ -125,19 +124,15 @@ class TravelVectorStore:
         hits = getattr(results, "points", results)
 
         formatted = []
-        for r in hits:
-            # r may be a tuple (point, score) in some APIs
-            point = r[0] if isinstance(r, tuple) else r
-
-            payload = getattr(point, "payload", None) or {}
-            score = getattr(point, "score", None)
-
+        for point in hits:
+            payload = point.payload or {}
             formatted.append({
-                "text": payload.get("text"),
+                "chunk_id": payload.get("chunk_id"),
+                "text": payload.get("text"), 
                 "destination": payload.get("destination"),
                 "category": payload.get("category"),
                 "content": payload.get("content"),
-                "score": score
+                "score": point.score
             })
 
         return formatted

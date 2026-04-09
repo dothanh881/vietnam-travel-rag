@@ -7,10 +7,7 @@ from typing import Optional, List
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Câu hỏi du lịch của người dùng")
-    top_k: int = Field(default=5, ge=1, le=10, description="Số lượng kết quả tìm kiếm")
-    destination: Optional[str] = Field(None, description="Lọc theo tỉnh/thành (VD: 'An Giang')")
-    category: Optional[str] = Field(None, description="Lọc theo danh mục (VD: 'food')")
-    mode: str = Field(default="ollama", description="Chế độ chạy LLM: 'ollama', 'gemini', hoặc 'hf'")
+    top_k: int = Field(default=3, ge=1, le=10, description="Số lượng kết quả tìm kiếm")
 
 class IngestRequest(BaseModel):
     destination: Optional[str] = Field(None, description="Lọc theo tỉnh/thành (VD: 'an-giang'). Nếu để trống sẽ quét tất cả.")
