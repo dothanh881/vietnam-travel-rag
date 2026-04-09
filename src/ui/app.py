@@ -1,7 +1,8 @@
 import httpx
 import chainlit as cl
+import json
 
-API_URL = "http://localhost:8000/api/v1/chat"
+API_URL = "http://localhost:8000/api/v1/chat/stream"
 
 
 @cl.on_chat_start
@@ -28,9 +29,9 @@ async def start():
 
     cl.user_session.set("settings", settings)
 
-    welcome_msg = """ **Chào bạn! Mình là Trợ lý Du lịch Việt Nam AI.**
+    welcome_msg = """ **Chào bạn! Mình là ViVu - Trợ lý Du lịch Việt Nam.**
 
-Hãy hỏi mình bất cứ điều gì tự nhiên nhất nhé!
+Mình đã được nâng cấp hệ thống **Cohere Reranker Cloud** và luồng **Streaming** mới. Hãy thử hỏi mình bất cứ điều gì nhé!
 """
     await cl.Message(content=welcome_msg).send()
 
@@ -46,45 +47,70 @@ async def main(message: cl.Message):
     mode = settings.get("mode", "ollama")
     top_k = settings.get("top_k", 5)
 
-    # Payload gửi xuống backend giờ chỉ có câu hỏi thuần túy
     payload = {
         "query": message.content,
         "top_k": int(top_k),
         "mode": mode
     }
 
-    msg = cl.Message(content="*Đang phân tích câu hỏi và tìm kiếm...* ")
+    # 1. Khởi tạo tin nhắn trống để stream
+    msg = cl.Message(content="")
     await msg.send()
 
+    # 2. Xử lý Streaming
+    full_answer = ""
+    status_lines = []
+    
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
-            response = await client.post(API_URL, json=payload)
-            response.raise_for_status()
-            data = response.json()
+            async with client.stream("POST", API_URL, json=payload) as response:
+                async for line in response.aiter_lines():
+                    if not line: continue
+                    if not line.startswith("data: "): continue
+                    
+                    raw_data = line[6:].strip()
+                    if raw_data == "[DONE]": break
+                        
+                    data = json.loads(raw_data)
+                    dtype = data.get("type")
+                    content = data.get("data")
 
-            answer = data.get("answer", "Xin lỗi, đã xảy ra lỗi.")
-            sources = data.get("sources", [])
-            proc_time = data.get("processing_time", 0.0)
+                    if dtype == "token":
+                        full_answer += content
+                        # Cập nhật nội dung chính (Text + Status)
+                        footer = "\n\n" + "\n".join(status_lines)
+                        msg.content = full_answer + footer
+                        await msg.update()
 
-            msg.content = answer + f"\n\n*( Hoàn thành trong: {proc_time}s)*"
+                    elif dtype == "status":
+                        status_lines.append(content)
+                        footer = "\n\n" + "\n".join(status_lines)
+                        msg.content = full_answer + footer
+                        await msg.update()
 
-            source_elements = []
-            if sources:
-                for i, src in enumerate(sources):
-                    s_dest = src.get("destination", "Không rõ")
-                    s_cat = src.get("category", "Không rõ")
-                    score = src.get("score", 0.0)
-                    text = src.get("text", "")
+                    elif dtype == "sources":
+                        source_elements = []
+                        for i, src in enumerate(content):
+                            s_dest = src.get("destination", "Không rõ")
+                            score = src.get("score", 0.0)
+                            r_score = src.get("rerank_score")
+                            text = src.get("text", "")
+                            
+                            score_info = f"Điểm vector: {score:.3f}"
+                            if r_score: 
+                                score_info += f" | Điểm Rerank: {r_score:.3f}"
 
-                    details = f" **Địa điểm:** {s_dest} |  **Danh mục:** {s_cat} |  **Điểm:** {score:.3f}\n\n **Nội dung:**\n{text}"
+                            details = f" **Địa điểm:** {s_dest} | {score_info}\n\n **Nội dung:**\n{text}"
+                            source_elements.append(
+                                cl.Text(name=f" Nguồn {i+1} ({s_dest})", content=details, display="inline")
+                            )
+                        msg.elements = source_elements
+                        await msg.update()
 
-                    source_elements.append(
-                        cl.Text(name=f" Nguồn {i + 1} ({s_dest})", content=details, display="inline")
-                    )
-
-            msg.elements = source_elements
-            await msg.update()
+                    elif dtype == "error":
+                        msg.content = f" **Lỗi hệ thống:** {content}"
+                        await msg.update()
 
         except Exception as e:
-            msg.content = f" **Lỗi hệ thống:** {str(e)}"
-            await msg.update()
+            msg.content = f" **Lỗi kết nối:** {str(e)}"
+            await msg.update()

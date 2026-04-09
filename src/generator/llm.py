@@ -65,6 +65,26 @@ class LLMGenerator:
     # MAIN API
     # ==================================================
 
+    async def generate_answer_stream(self, question: str, chunks: list[dict]):
+        if not chunks:
+            yield "🌴 Hiện tại mình chưa có thông tin trong dữ liệu về địa điểm này."
+            return
+
+        # 1. Build context & prompt
+        context = self._build_context(chunks)
+        prompt_dict = self._build_prompt(context, question)
+
+        # 2. Điều hướng bộ luồng sinh text tùy theo mode
+        if self.mode == "hf":
+            async for token in self._generate_hf_stream(prompt_dict):
+                yield token
+        elif self.mode == "ollama":
+            async for token in self._generate_ollama_stream(prompt_dict):
+                yield token
+        elif self.mode == "gemini":
+            async for token in self._generate_gemini_stream(prompt_dict):
+                yield token
+
     def generate_answer(self, question: str, chunks: list[dict]) -> str:
         if not chunks:
             return "Hiện tại mình chưa có thông tin trong dữ liệu về địa điểm này."
@@ -91,6 +111,50 @@ class LLMGenerator:
         ans = ans.replace('</think>', '').replace('<think>', '').strip()
         
         return ans
+
+    # ==================================================
+    # STREAM GENERATORS CHO TỪNG MODE
+    # ==================================================
+
+    async def _generate_hf_stream(self, prompt_dict):
+        """Streaming cho HuggingFace (Local) - Giả lập đơn giản cho demo"""
+        ans = self._generate_hf(prompt_dict)
+        yield ans
+
+    async def _generate_ollama_stream(self, prompt_dict):
+        """Streaming cho Ollama (Async)"""
+        import ollama
+        messages = [
+            {"role": "system", "content": prompt_dict["system"]},
+            {"role": "user", "content": prompt_dict["user"]}
+        ]
+        
+        # Mồi chữ nếu cần
+        yield "🌴 "
+
+        # Gọi Async stream của ollama
+        async for part in await ollama.AsyncClient().chat(
+            model=self.ollama_model,
+            messages=messages,
+            stream=True,
+            options={"temperature": 0.1}
+        ):
+            token = part['message']['content']
+            yield token
+
+    async def _generate_gemini_stream(self, prompt_dict):
+        """Streaming cho Gemini Cloud API"""
+        full_prompt = f"{prompt_dict['system']}\n\n{prompt_dict['user']}"
+        response = self.gemini_model.generate_content(
+            full_prompt,
+            stream=True,
+            generation_config=genai.types.GenerationConfig(temperature=0.1)
+        )
+        
+        yield "🌴 "
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
 
     # ==================================================
     # CONTEXT & PROMPT (Dùng chung cho cả 3 mode)

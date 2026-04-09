@@ -2,6 +2,8 @@ import time
 import os
 import glob
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
+import json
 from functools import lru_cache
 from api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse, SourceChunk
 from service.embedding import EmbeddingService
@@ -9,6 +11,7 @@ from vector_store.qdrant import TravelVectorStore
 from retrieval.search import VectorSearchEngine
 from retrieval.query_analyzer import TravelQueryAnalyzer
 from retrieval.retriever import TravelRetriever
+from retrieval.reranker import CohereReranker
 from generator.llm import LLMGenerator
 from pipeline.rag_pipeline import TravelRAGPipeline
 from ingestion.ingest_runner import IngestRunner
@@ -51,6 +54,10 @@ def get_retriever() -> TravelRetriever:
     )
 
 @lru_cache(maxsize=1)
+def get_reranker() -> CohereReranker:
+    return CohereReranker()
+
+@lru_cache(maxsize=1)
 def get_llm_generator() -> LLMGenerator:
     return LLMGenerator(mode="ollama", ollama_model="hf.co/Qwen/Qwen2.5-3B-Instruct-GGUF:Q4_K_M")
 
@@ -59,7 +66,8 @@ def get_llm_generator() -> LLMGenerator:
 def get_rag_pipeline() -> TravelRAGPipeline:
     return TravelRAGPipeline(
         retriever=get_retriever(),
-        llm_generator=get_llm_generator()
+        llm_generator=get_llm_generator(),
+        reranker=get_reranker()
     )
 
 
@@ -108,6 +116,61 @@ def chat_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
+
+
+@router.post("/chat/stream", tags=["RAG Chat Stream"])
+async def chat_stream_endpoint(
+        request: ChatRequest,
+        pipeline: TravelRAGPipeline = Depends(get_rag_pipeline),
+        generator: LLMGenerator = Depends(get_llm_generator)
+):
+    async def event_generator():
+        start_time = time.time()
+        try:
+            # 1. Cập nhật mode LLM
+            generator.mode = request.mode
+
+            # 2. Báo cáo trạng thái ngay
+            yield f"data: {json.dumps({'type': 'status', 'data': '* Đang tìm kiếm tài liệu...* ⏳'})}\n\n"
+            
+            # 3. Bắt đầu quá trình RAG Stream
+            answer_stream, raw_chunks = await pipeline.ask_stream(
+                question=request.query,
+                top_k=request.top_k,
+                destination=request.destination,
+                category=request.category
+            )
+            
+            # 4. Gửi danh sách nguồn dữ liệu (Sources) trước
+            sources = []
+            for c in raw_chunks:
+                sources.append({
+                    "text": c.get("text", ""),
+                    "destination": c.get("destination"),
+                    "category": c.get("category"),
+                    "score": float(c.get("score", 0.0)),
+                    "rerank_score": c.get("rerank_score")
+                })
+            yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
+            
+            # 5. Stream từng token trả về
+            first_token_lat = None
+            async for token in answer_stream:
+                if first_token_lat is None:
+                    first_token_lat = round(time.time() - start_time, 2)
+                    yield f"data: {json.dumps({'type': 'status', 'data': f'* Tốc độ phản hồi (TTFT): {first_token_lat}s*'})}\n\n"
+                
+                yield f"data: {json.dumps({'type': 'token', 'data': token})}\n\n"
+                
+            # 6. Gửi tổng thời gian kết thúc
+            total_time = round(time.time() - start_time, 2)
+            yield f"data: {json.dumps({'type': 'status', 'data': f'* Tổng thời gian: {total_time}s*'})}\n\n"
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @lru_cache(maxsize=1)
