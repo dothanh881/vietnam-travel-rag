@@ -68,6 +68,7 @@ class LLMGenerator:
             model=active_model,
             messages=messages,
             temperature=temp,
+            max_tokens=1024,
             frequency_penalty=0.1
         )
         
@@ -81,24 +82,22 @@ class LLMGenerator:
 
     def generate_answer(self, question: str, chunks: list[dict]) -> str:
         """Hàm chính thức phục vụ luồng RAG, nhận list chunks từ Qdrant."""
-        if not chunks:
-            return "Hiện tại ViVu chưa có thông tin trong dữ liệu về địa điểm/câu hỏi này."
+        # 1. Lọc chunks theo điểm số (Threshold) để tránh ảo giác
+        filtered_chunks = [c for c in chunks if c.get("rerank_score", 1.0) >= 0.05]
+        
+        if not filtered_chunks:
+            return "🌴 Thành thật xin lỗi bạn, hiện tại dữ liệu của ViVu chưa cập nhật khu vực này. Mình sẽ bổ sung sớm trong tương lai nhé!"
 
-        # 1. Build context
-        context = self._build_context(chunks)
+        context = self._build_context(filtered_chunks)
 
-        # 2. Xử lý Prompt
-        if "{context}" in self.system_prompt and "{query}" in self.system_prompt:
-            user_prompt = self.system_prompt.replace("{context}", context).replace("{query}", question)
-            system_prompt = "Bạn là ViVu, trợ lý du lịch AI am hiểu về Việt Nam. QUY TẮC SỐ 1: BẮT BUỘC chỉ trả lời thông tin có trong NGỮ CẢNH cung cấp. Tuyệt đối không bịa đặt."
-        else:
-            system_prompt = self.system_prompt
-            user_prompt = f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
+        # 2. system = toàn bộ instructions từ .md | user = data động (context + câu hỏi)
+        system_prompt = self.system_prompt
+        user_prompt = f"<context>\n{context}\n</context>\n\nCâu hỏi của du khách: {question}"
 
         # 3. Gọi lõi Generate
         ans = self.generate(prompt=system_prompt, user_input=user_prompt)
-
-        # 4. Mồi thêm icon cho sinh động giống phiên bản cũ của bạn
+        ans = self._fix_formatting(ans)
+        # 4. Mồi thêm icon cho sinh động
         if not ans.startswith('🌴'):
             ans = '🌴 ' + ans
             
@@ -114,13 +113,19 @@ class LLMGenerator:
             {"role": "user", "content": user_input}
         ]
         
-        response_stream = await active_async_client.chat.completions.create(
-            model=active_model,
-            messages=messages,
-            stream=True,
-            temperature=temp,
-            frequency_penalty=0.1
-        )
+        print(f"[LLM] Mode={self.mode} | Model={active_model} | Đang gọi API stream...")
+        try:
+            response_stream = await active_async_client.chat.completions.create(
+                model=active_model,
+                messages=messages,
+                stream=True,
+                temperature=temp,
+                max_tokens=1024,
+                frequency_penalty=0.1
+            )
+        except Exception as e:
+            print(f"[LLM ERROR] Không thể kết nối tới LLM: {type(e).__name__}: {e}")
+            raise
         
         in_think_block = False
         async for chunk in response_stream:
@@ -140,26 +145,43 @@ class LLMGenerator:
 
     async def generate_answer_stream(self, question: str, chunks: list[dict]):
         """Hàm trả về luồng text streaming cho RAG."""
-        if not chunks:
-            yield "🌴 Hiện tại ViVu chưa có thông tin trong dữ liệu về địa điểm/câu hỏi này."
+        # 1. Lọc chunks theo điểm số (Threshold)
+        filtered_chunks = [c for c in chunks if c.get("rerank_score", 1.0) >= 0.05]
+
+        if not filtered_chunks:
+            yield "🌴 Thành thật xin lỗi bạn, hiện tại dữ liệu của ViVu chưa cập nhật khu vực này. Mình sẽ bổ sung sớm trong tương lai nhé!"
             return
 
-        context = self._build_context(chunks)
+        context = self._build_context(filtered_chunks)
 
-        if "{context}" in self.system_prompt and "{query}" in self.system_prompt:
-            user_prompt = self.system_prompt.replace("{context}", context).replace("{query}", question)
-            system_prompt = "Bạn là ViVu, trợ lý du lịch AI am hiểu về Việt Nam. QUY TẮC SỐ 1: BẮT BUỘC chỉ trả lời thông tin có trong NGỮ CẢNH cung cấp. Tuyệt đối không bịa đặt."
-        else:
-            system_prompt = self.system_prompt
-            user_prompt = f"NGỮ CẢNH:\n{context}\n\nCÂU HỎI:\n{question}"
+        # system = toàn bộ instructions từ .md | user = data động (context + câu hỏi)
+        system_prompt = self.system_prompt
+        user_prompt = f"<context>\n{context}\n</context>\n\nCâu hỏi của du khách: {question}"
 
+        print(f"[LLM] Bắt đầu generate_answer_stream | Mode={self.mode}")
         yield "🌴 "
-        async for token in self.generate_stream(prompt=system_prompt, user_input=user_prompt):
-            yield token
+        try:
+            async for token in self.generate_stream(prompt=system_prompt, user_input=user_prompt):
+                yield token
+                
+        except Exception as e:
+            print(f"[LLM ERROR] generate_stream thất bại: {type(e).__name__}: {e}")
+            yield f"\n\n⚠️ Lỗi kết nối LLM ({self.mode}): {e}"
 
     # ==================================================
     # UTILS FORMATTER
     # ==================================================
+    def _fix_formatting(self, text: str) -> str:
+        """Post-processor: Đảm bảo mỗi dấu gạch đầu dòng được xuống hàng đúng cách."""
+        # Thêm dòng trống trước mỗi '- ' nếu đang dính liền với chữ trước
+        text = re.sub('([^\\r\\n])(\\n?- )', '\\1\n\n- ', text)
+        # Một số model xuất ra '• ' thay vì '- ', chuẩn hóa lại
+        text = text.replace('\u2022 ', '\n\n- ')
+        # Loại bỏ nhiều dòng trống liên tiếp (giữ tối đa 2)
+        text = re.sub('\n{3,}', '\n\n', text)
+        return text.strip()
+
+
     def _build_context(self, chunks: list[dict]) -> str:
         """Xây dựng context string từ các chunks và lọc bỏ rác văn bản mạnh tay."""
         parts = []

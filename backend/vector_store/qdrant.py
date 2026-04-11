@@ -19,7 +19,7 @@ from qdrant_client.models import (
 
 class TravelVectorStore:
     def __init__(self, collection_name="travel_knowledge_base", dimension=1024, url="http://localhost:6333"):
-        self.client = QdrantClient(url=url)
+        self.client = QdrantClient(url=url, timeout=60) # Tăng timeout lên 60s
         self.collection_name = collection_name
         self.dimension = dimension
 
@@ -67,7 +67,8 @@ class TravelVectorStore:
                         "destination": chunk.get("destination"), # Ví dụ: "An Giang"
                         "category": chunk.get("category"),
                         "content": chunk.get("content"),
-                        "text": chunk.get("text")
+                        "text": chunk.get("text") or chunk.get("chunk_text"),
+                        "source": ", ".join([s.get("url") for s in chunk.get("sources", []) if s.get("url")])
                     }
                 )
             )
@@ -132,6 +133,7 @@ class TravelVectorStore:
                 "destination": payload.get("destination"),
                 "category": payload.get("category"),
                 "content": payload.get("content"),
+                "source": payload.get("source"),
                 "score": point.score
             })
 
