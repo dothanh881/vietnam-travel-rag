@@ -7,7 +7,7 @@ from typing import Optional, List
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Câu hỏi du lịch của người dùng")
-    top_k: int = Field(default=3, ge=1, le=10, description="Số lượng kết quả tìm kiếm")
+    top_k: int = Field(default=5, ge=1, le=20, description="Số lượng kết quả tìm kiếm")
     mode: str = Field(default="vllm", description="Chế độ chạy LLM (vllm hoặc ollama)")
 
 class IngestRequest(BaseModel):

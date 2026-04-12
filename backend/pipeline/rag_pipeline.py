@@ -1,12 +1,15 @@
+from langfuse import observe
+
 class TravelRAGPipeline:
     def __init__(self, retriever, llm_generator, reranker=None):
         self.retriever = retriever
         self.llm_generator = llm_generator
         self.reranker = reranker
 
+    @observe(name="ViVu_RAG_Pipeline")
     def ask(self, question: str, top_k: int = 5, destination: str = None):
-        # Nếu có reranker, lấy rộng ra 10 chunks từ Qdrant (Giảm từ 20 xuống 10 để chạy CPU cho nhanh)
-        retrieval_top_k = 10 if self.reranker else top_k
+        # Nếu có reranker, lấy rộng ra 15 chunks từ Qdrant để reranker có nhiều dữ liệu
+        retrieval_top_k = 15 if self.reranker else top_k
 
         # 1. Truy xuất dữ liệu từ Qdrant (Truyền toàn bộ thông số xuống Retriever)
         chunks = self.retriever.retrieve(
@@ -25,9 +28,10 @@ class TravelRAGPipeline:
         # 3. Trả về cả câu trả lời VÀ danh sách nguồn dữ liệu
         return answer, chunks
 
+    @observe(name="ViVu_RAG_Pipeline")
     async def ask_stream(self, question: str, top_k: int = 5, destination: str = None):
-        # Nếu có reranker, lấy rộng ra 10 chunks từ Qdrant (Giảm từ 20 xuống 10 để chạy CPU cho nhanh)
-        retrieval_top_k = 10 if self.reranker else top_k
+        # Nếu có reranker, lấy rộng ra 15 chunks từ Qdrant để reranker có nhiều dữ liệu
+        retrieval_top_k = 15 if self.reranker else top_k
 
         # 1. Truy xuất dữ liệu từ Qdrant (Synchronous, chạy trong threadpool để không block ASYNC EVENT LOOP)
         import time

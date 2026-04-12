@@ -3,6 +3,7 @@ import os
 import cohere
 from core.logger import get_logger
 from dotenv import load_dotenv
+from langfuse import observe
 
 load_dotenv()
 logger = get_logger(__name__)
@@ -22,6 +23,7 @@ class CohereReranker:
         self.model = model
         logger.info(f"CohereReranker khởi tạo thành công với model: {self.model}")
 
+    @observe(as_type="generation", name="2_Cohere_Rerank")
     def rerank(self, query: str, candidates: list[dict], top_n: int = 5) -> list[dict]:
         if not candidates:
             return []

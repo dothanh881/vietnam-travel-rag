@@ -2,6 +2,7 @@ import os
 import re
 from openai import OpenAI, AsyncOpenAI
 from core.logger import get_logger
+from langfuse import observe
 
 logger = get_logger(__name__)
 
@@ -68,7 +69,7 @@ class LLMGenerator:
             model=active_model,
             messages=messages,
             temperature=temp,
-            max_tokens=1024,
+            max_tokens=2048,
             frequency_penalty=0.1
         )
         
@@ -80,13 +81,17 @@ class LLMGenerator:
         return ans
 
 
+    @observe(as_type="generation", name="3_vLLM_Generate")
     def generate_answer(self, question: str, chunks: list[dict]) -> str:
-        """Hàm chính thức phục vụ luồng RAG, nhận list chunks từ Qdrant."""
-        # 1. Lọc chunks theo điểm số (Threshold) để tránh ảo giác
-        filtered_chunks = [c for c in chunks if c.get("rerank_score", 1.0) >= 0.05]
+        # 1. Đoạn này KHÔNG NÊN lọc theo rerank_score nữa.
+        # Cohere Rerank chỉ dùng để sắp xếp (sorting) và chọn Top 3-5, không nên dùng điểm của nó làm cutoff cứng 
+        # vì mô hình thường vứt đi các đoạn trả lời đúng 1 nửa câu hỏi nhiều vế (VD: Hỏi "A và B", đoạn văn có "A" dễ bị score = 0.00x).
+        filtered_chunks = chunks
         
+        # Nếu không có chunks (nghĩa là rớt từ vòng Qdrant score < 0.35), trả về thẳng câu từ chối mà không gọi LLM để NGĂN CHẶN ảo giác 100%.
         if not filtered_chunks:
-            return "🌴 Thành thật xin lỗi bạn, hiện tại dữ liệu của ViVu chưa cập nhật khu vực này. Mình sẽ bổ sung sớm trong tương lai nhé!"
+            logger.warning(f" [LLM] Không tìm thấy ngữ cảnh cho câu hỏi: {question}. Từ chối tĩnh.")
+            return "🌴 Xin lỗi, hiện tại hệ thống chưa có thông tin để trả lời câu hỏi này của bạn. Bạn hãy thử hỏi thêm về các địa danh, món ăn, hoặc thông tin khác nhé!"
 
         context = self._build_context(filtered_chunks)
 
@@ -120,7 +125,7 @@ class LLMGenerator:
                 messages=messages,
                 stream=True,
                 temperature=temp,
-                max_tokens=1024,
+                max_tokens=2048,
                 frequency_penalty=0.1
             )
         except Exception as e:
@@ -143,13 +148,17 @@ class LLMGenerator:
                 if not in_think_block and token:
                     yield token
 
+    @observe(as_type="generation", name="3_vLLM_Generate_Stream")
     async def generate_answer_stream(self, question: str, chunks: list[dict]):
         """Hàm trả về luồng text streaming cho RAG."""
         # 1. Lọc chunks theo điểm số (Threshold)
-        filtered_chunks = [c for c in chunks if c.get("rerank_score", 1.0) >= 0.05]
+        # 1. Không dùng cutoff của Rerank Score nữa
+        filtered_chunks = chunks
 
+        # Trả lời tĩnh bằng luồng ngay lập tức và kết thúc nếu không có context (ngăn chặn dứt điểm ảo giác của Qwen)
         if not filtered_chunks:
-            yield "🌴 Thành thật xin lỗi bạn, hiện tại dữ liệu của ViVu chưa cập nhật khu vực này. Mình sẽ bổ sung sớm trong tương lai nhé!"
+            logger.warning(f" [LLM Stream] Context trống cho: {question}. Chặn ảo giác trực tiếp.")
+            yield "🌴 Xin lỗi, hiện tại hệ thống chưa có thông tin để trả lời câu hỏi này của bạn. Bạn hãy thử hỏi thêm về các địa danh, món ăn, hoặc thông tin khác nhé!"
             return
 
         context = self._build_context(filtered_chunks)

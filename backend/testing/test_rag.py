@@ -53,7 +53,7 @@ def main():
         api_key="sk-runpod-key"
     )
 
-    analyzer = TravelQueryAnalyzer(llm_generator=llm_generator)
+    analyzer = TravelQueryAnalyzer()
 
     retriever = TravelRetriever(
         embedding_service=embedding,

@@ -49,7 +49,7 @@ def get_retriever() -> TravelRetriever:
     return TravelRetriever(
         embedding_service=get_embedding_service(),
         search_engine=VectorSearchEngine(get_vector_store()),
-        analyzer=TravelQueryAnalyzer(llm_generator=get_llm_generator()),
+        analyzer=TravelQueryAnalyzer(),
         bm25_encoder=get_bm25_encoder()
     )
 
