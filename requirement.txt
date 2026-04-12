@@ -40,3 +40,5 @@ bitsandbytes
 sentencepiece
 
 cohere
+langfuse
+flashtext
