@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { UserButton, useAuth } from '@clerk/nextjs';
 import { Send, Bot, MapPin, Cpu, Zap, Square, Sun, Moon, Menu, X, ChevronLeft } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   id: string;
@@ -217,7 +219,7 @@ export default function Chat() {
           {/* User info */}
           {isSignedIn && (
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 ${dark ? 'bg-gray-800/50' : 'bg-gray-100'}`}>
-              <UserButton afterSignOutUrl="/" />
+              <UserButton />
               <div className="min-w-0 flex-1">
                 <p className={`text-sm font-semibold truncate ${dark ? 'text-gray-200' : 'text-gray-800'}`}>
                   {(user as any)?.firstName || 'Người dùng'}
@@ -293,7 +295,15 @@ export default function Chat() {
                       ))}
                     </span>
                   ) : (
-                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                    m.role === 'assistant' ? (
+                      <div className="prose prose-sm max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {m.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                    )
                   )}
                 </div>
               </div>

@@ -95,7 +95,7 @@ export default function LandingPage() {
                 </SignUpButton>
               </>
             ) : (
-              <UserButton afterSignOutUrl="/" />
+              <UserButton />
             )}
             <Link href="/chat" className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border border-gray-200 hover:border-emerald-300 hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 transition-all font-medium">
               <MessageCircle className="w-3.5 h-3.5" /> Chat AI
@@ -122,7 +122,7 @@ export default function LandingPage() {
                   </SignUpButton>
                 </>
               ) : (
-                <div className="flex justify-center py-1"><UserButton afterSignOutUrl="/" /></div>
+                <div className="flex justify-center py-1"><UserButton /></div>
               )}
               <Link href="/chat" onClick={() => setMenuOpen(false)} className="w-full py-2 rounded-lg border border-gray-200 text-sm text-center text-gray-700">Chat AI</Link>
             </div>
@@ -156,9 +156,11 @@ export default function LandingPage() {
                 <Link href="/chat" className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-base transition-all shadow-lg shadow-emerald-200 hover:shadow-emerald-300 hover:-translate-y-0.5">
                   <MessageCircle className="w-5 h-5" /> Bắt đầu hỏi miễn phí
                 </Link>
-                <button onClick={() => setModal('register')} className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl border border-gray-200 hover:border-emerald-300 bg-white hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 font-medium text-base transition-all hover:-translate-y-0.5 shadow-sm">
-                  Tạo tài khoản <ChevronRight className="w-4 h-4" />
-                </button>
+                <SignUpButton mode="modal">
+                  <button className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl border border-gray-200 hover:border-emerald-300 bg-white hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 font-medium text-base transition-all hover:-translate-y-0.5 shadow-sm">
+                    Tạo tài khoản <ChevronRight className="w-4 h-4" />
+                  </button>
+                </SignUpButton>
               </div>
 
               {/* Stats row */}
