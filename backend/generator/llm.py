@@ -91,13 +91,13 @@ class LLMGenerator:
         # Nếu không có chunks (nghĩa là rớt từ vòng Qdrant score < 0.35), trả về thẳng câu từ chối mà không gọi LLM để NGĂN CHẶN ảo giác 100%.
         if not filtered_chunks:
             logger.warning(f" [LLM] Không tìm thấy ngữ cảnh cho câu hỏi: {question}. Từ chối tĩnh.")
-            return "🌴 Xin lỗi, hiện tại hệ thống chưa có thông tin để trả lời câu hỏi này của bạn. Bạn hãy thử hỏi thêm về các địa danh, món ăn, hoặc thông tin khác nhé!"
+            return "🌴 Xin lỗi, ViVu hiện chưa có thông tin chi tiết về câu hỏi này."
 
         context = self._build_context(filtered_chunks)
 
         # 2. system = toàn bộ instructions từ .md | user = data động (context + câu hỏi)
         system_prompt = self.system_prompt
-        user_prompt = f"<context>\n{context}\n</context>\n\nCâu hỏi của du khách: {question}"
+        user_prompt = f"<context>\n{context}\n</context>\n\nCÂU HỎI:\n{question}"
 
         # 3. Gọi lõi Generate
         ans = self.generate(prompt=system_prompt, user_input=user_prompt)
@@ -158,14 +158,14 @@ class LLMGenerator:
         # Trả lời tĩnh bằng luồng ngay lập tức và kết thúc nếu không có context (ngăn chặn dứt điểm ảo giác của Qwen)
         if not filtered_chunks:
             logger.warning(f" [LLM Stream] Context trống cho: {question}. Chặn ảo giác trực tiếp.")
-            yield "🌴 Xin lỗi, hiện tại hệ thống chưa có thông tin để trả lời câu hỏi này của bạn. Bạn hãy thử hỏi thêm về các địa danh, món ăn, hoặc thông tin khác nhé!"
+            yield "🌴 Xin lỗi, ViVu hiện chưa có thông tin chi tiết về câu hỏi này."
             return
 
         context = self._build_context(filtered_chunks)
 
         # system = toàn bộ instructions từ .md | user = data động (context + câu hỏi)
         system_prompt = self.system_prompt
-        user_prompt = f"<context>\n{context}\n</context>\n\nCâu hỏi của du khách: {question}"
+        user_prompt = f"<context>\n{context}\n</context>\n\nCÂU HỎI:\n{question}\n\n(Lưu ý hệ thống: Bắt buộc trình bày nội dung thành các đoạn văn ngắn và sử dụng gạch đầu dòng để dễ đọc, tuyệt đối không viết một mạch dài)."
 
         print(f"[LLM] Bắt đầu generate_answer_stream | Mode={self.mode}")
         yield "🌴 "
@@ -175,7 +175,7 @@ class LLMGenerator:
                 
         except Exception as e:
             print(f"[LLM ERROR] generate_stream thất bại: {type(e).__name__}: {e}")
-            yield f"\n\n⚠️ Lỗi kết nối LLM ({self.mode}): {e}"
+            yield f"\n\n Lỗi kết nối LLM ({self.mode}): {e}"
 
     # ==================================================
     # UTILS FORMATTER

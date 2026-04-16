@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     query: str = Field(..., description="Câu hỏi du lịch của người dùng")
     top_k: int = Field(default=5, ge=1, le=20, description="Số lượng kết quả tìm kiếm")
     mode: str = Field(default="vllm", description="Chế độ chạy LLM (vllm hoặc ollama)")
+    session_id: Optional[str] = Field(default=None, description="Định danh luồng hội thoại Redis")
 
 class IngestRequest(BaseModel):
     destination: Optional[str] = Field(None, description="Lọc theo tỉnh/thành (VD: 'an-giang'). Nếu để trống sẽ quét tất cả.")

@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+
+# Tải biến môi trường từ thư mục root
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

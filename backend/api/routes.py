@@ -16,6 +16,8 @@ from pipeline.rag_pipeline import TravelRAGPipeline
 from ingestion.ingest_runner import IngestRunner
 from service.bm25_encoder import TravelBM25Encoder
 from retrieval.reranker import CohereReranker
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from service.state_manager import TravelStateManager
 
 router = APIRouter()
 
@@ -80,6 +82,12 @@ def get_rag_pipeline() -> TravelRAGPipeline:
         reranker=get_reranker()
     )
 
+@lru_cache(maxsize=1)
+def get_state_manager() -> TravelStateManager:
+    return TravelStateManager()
+
+# Đã loại bỏ LLM Extractor do Zero-LLM FlashText hoạt động tốt hơn và chính xác 100%.
+
 
 # ==========================================
 # ENDPOINTS
@@ -129,9 +137,28 @@ def chat_endpoint(
 @router.post("/chat/stream", tags=["RAG Chat Stream"])
 def chat_stream_endpoint(
         request: ChatRequest,
+        background_tasks: BackgroundTasks,
         pipeline: TravelRAGPipeline = Depends(get_rag_pipeline),
-        generator: LLMGenerator = Depends(get_llm_generator)
+        generator: LLMGenerator = Depends(get_llm_generator),
+        state_manager: TravelStateManager = Depends(get_state_manager)
 ):
+    # --- START REDIS STATE MANAGEMENT ---
+    active_dest = None
+    if request.session_id and request.session_id != "guest_session":
+        state = state_manager.get_state(request.session_id)
+        active_dest = state.get("active")
+    
+    # Trích xuất địa danh hiện tại bằng Analyzer (Zero-LLM) để check
+    analyzer_result = pipeline.retriever.analyzer.analyze(request.query)
+    current_dest = analyzer_result.get("destination")
+    
+    # Nếu câu hỏi hiện hành MẬP MỜ (không có dest) -> Fallback dùng active_dest từ Redis
+    target_dest = current_dest if current_dest else active_dest
+    
+    if not current_dest and active_dest:
+        print(f"[Redis State] Context Switching: Khôi phục ngữ cảnh '{active_dest}' cho câu hỏi mập mờ.")
+    # --- END REDIS STATE MANAGEMENT ---
+    
     async def event_generator():
         start_time = time.time()
         try:
@@ -145,7 +172,7 @@ def chat_stream_endpoint(
             answer_stream, raw_chunks = await pipeline.ask_stream(
                 question=request.query,
                 top_k=request.top_k,
-                destination=None
+                destination=target_dest
             )
             
             # 1. Gửi Cấu trúc Nguồn dữ liệu (Sources) trước
@@ -178,7 +205,16 @@ def chat_stream_endpoint(
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'data': f'Lỗi hệ thống: {str(e)}'})}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    # Gắn BackgroundTask cập nhật Redis State ẩn sử dụng tham số Zero-LLM (rất siêu tốc)
+    if request.session_id and request.session_id != "guest_session":
+        # Khai báo hàm helper nhỏ gọn để in log
+        def update_redis_fast():
+            state_manager.update_context(session_id=request.session_id, new_destination=target_dest)
+            print(f"[Redis State] Đã ghi nhận State mới chạy ngầm: {target_dest}")
+            
+        background_tasks.add_task(update_redis_fast)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", background=background_tasks)
 
 
 @lru_cache(maxsize=1)
