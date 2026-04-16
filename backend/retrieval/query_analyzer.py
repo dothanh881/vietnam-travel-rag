@@ -37,7 +37,9 @@ class TravelQueryAnalyzer:
             "giá": "chi phí tiền mức giá",
             "vé": "giá vé vé vào cổng vé tham quan",
             "chi phí": "ngân sách bảng giá",
-            "đẹp": "view phong cảnh chụp hình"
+            "đẹp": "view phong cảnh chụp hình",
+            "mua": "đặc sản lưu niệm mua sắm chợ",
+            "quà": "đặc sản lưu niệm quà tặng mua sắm"
         }
 
     def analyze(self, query: str) -> Dict[str, Optional[str]]:
@@ -63,9 +65,33 @@ class TravelQueryAnalyzer:
         
         expanded_query = " ".join(expanded_parts)
 
-        logger.info(f"[Analyzer] Query: '{query}' -> Dest: {detected_dest} | Expanded: {expanded_query}")
+        # 3. PHÂN TÁCH SUBCONTEXT (Compound Query)
+        # Tách các câu hỏi ghép siêu nhẹ (Tốc độ ~0.1ms) không cần LLM
+        sub_queries = []
+        split_pattern = r'(?i)\b(và|cũng như|kết hợp|rồi|mà còn)\b|[,;]'
+        raw_subs = [sq.strip() for sq in re.split(split_pattern, query) 
+                    if sq and sq.strip().lower() not in ['và', 'cũng như', 'kết hợp', 'rồi', 'mà còn', ',', ';']]
+        
+        if len(raw_subs) > 1:
+            for sq in raw_subs:
+                # Bỏ qua chuỗi quá ngắn
+                if len(sq.split()) <= 1:
+                    continue
+                sq_expanded = [sq]
+                if detected_dest and detected_dest.lower() not in sq.lower():
+                    sq_expanded.append(detected_dest)
+                
+                # Áp dụng rule-based intent
+                for key, expansion in self.intent_expansion.items():
+                    if re.search(rf'\b{key}\b', sq.lower(), re.UNICODE):
+                        sq_expanded.append(expansion)
+                        
+                sub_queries.append(" ".join(sq_expanded))
+
+        logger.info(f"[Analyzer] Query: '{query}' -> Dest: {detected_dest} | Expanded: {expanded_query} | SubQueries: {len(sub_queries)}")
 
         return {
             "destination": detected_dest,
-            "expanded_query": expanded_query
+            "expanded_query": expanded_query,
+            "sub_queries": sub_queries
         }
