@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { UserButton, useAuth } from '@clerk/nextjs';
-import { Send, Bot, MapPin, Cpu, Zap, Square, Sun, Moon, Menu, X, ChevronLeft } from 'lucide-react';
+import { Send, Bot, MapPin, Cpu, Zap, Square, Sun, Moon, Menu, X, ChevronLeft, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +11,12 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  updatedAt: string;
 }
 
 const SUGGESTIONS = [
@@ -25,6 +31,8 @@ export default function Chat() {
   const [mounted, setMounted] = useState(false);
   const [dark, setDark] = useState(false);
   const [mode, setMode] = useState<'vllm' | 'ollama'>('ollama');
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,12 +42,40 @@ export default function Chat() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load dark preference from localStorage
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem('vivu-theme');
     if (saved === 'dark') setDark(true);
   }, []);
+
+  useEffect(() => {
+    const fetchConversations = async () => {
+      if (!isSignedIn) return;
+      try {
+        const res = await fetch('/api/conversations');
+        if (res.ok) setConversations(await res.json());
+      } catch (err) { }
+    };
+    fetchConversations();
+  }, [isSignedIn, conversationId]);
+
+  const loadConversation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data.messages || []);
+        setConversationId(data.id);
+        setSidebarOpen(false);
+      }
+    } catch (err) { }
+  };
+
+  const newConversation = () => {
+    setMessages([]);
+    setConversationId(null);
+    setSidebarOpen(false);
+  };
 
   const toggleDark = () => {
     setDark(prev => {
@@ -80,7 +116,7 @@ export default function Chat() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: allMessages, mode, top_k: 3 }),
+        body: JSON.stringify({ messages: allMessages, mode, top_k: 3, conversationId }),
         signal: abortControllerRef.current.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -100,6 +136,11 @@ export default function Chat() {
             try {
               const token = JSON.parse(t.slice(2));
               setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m));
+            } catch (_) { /* skip */ }
+          } else if (t.startsWith('8:')) {
+            try {
+              const data = JSON.parse(t.slice(2));
+              if (data.conversationId) setConversationId(data.conversationId);
             } catch (_) { /* skip */ }
           } else if (t.startsWith('3:')) {
             try {
@@ -189,18 +230,31 @@ export default function Chat() {
         </div>
 
         {/* Chat history */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          <p className={`text-[10px] font-semibold uppercase tracking-widest mb-2 px-2 ${textSecondary}`}>Lịch sử</p>
-          {messages.length === 0 ? (
-            <p className={`text-xs px-3 py-2 ${textSecondary}`}>Chưa có cuộc trò chuyện nào.</p>
-          ) : (
-            messages.filter(m => m.role === 'user').map(m => (
-              <button key={m.id} onClick={() => sendMessage(m.content)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${sidebarItem}`}>
-                {m.content}
-              </button>
-            ))
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {isSignedIn && (
+            <button onClick={newConversation} className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm`}>
+              <Plus className="w-4 h-4" /> Cuộc trò chuyện mới
+            </button>
           )}
+
+          <div className="pt-2 space-y-0.5">
+            <p className={`text-[10px] font-semibold uppercase tracking-widest mb-2 px-2 mt-2 ${textSecondary}`}>Lịch sử</p>
+            {!isSignedIn ? (
+              <p className={`text-xs px-3 py-2 ${textSecondary}`}>Đăng nhập ở góc dưới để lưu trữ.</p>
+            ) : conversations.length === 0 ? (
+              <p className={`text-xs px-3 py-2 ${textSecondary}`}>Chưa có cuộc trò chuyện nào.</p>
+            ) : (
+              conversations.map(c => (
+                <button key={c.id} onClick={() => loadConversation(c.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${conversationId === c.id
+                      ? (dark ? 'bg-gray-800 text-emerald-400' : 'bg-gray-200 text-emerald-600')
+                      : sidebarItem
+                    }`}>
+                  {c.title || 'Cuộc trò chuyện mới'}
+                </button>
+              ))
+            )}
+          </div>
         </div>
 
 
@@ -288,11 +342,9 @@ export default function Chat() {
                   ? `max-w-[75%] rounded-2xl rounded-tr-sm px-5 py-3 shadow-sm ${bgUserMsg}`
                   : `flex-1 min-w-0 rounded-2xl rounded-tl-sm px-5 py-3 ${bgBotMsg}`
                   }`}>
-                  {m.role === 'assistant' && m.content === '' && isLoading ? (
-                    <span className="flex items-center gap-1.5 h-5">
-                      {[0, 150, 300].map(d => (
-                        <span key={d} className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                      ))}
+                  {(m.role === 'assistant' && (m.content === '' || m.content === '🌴 ') && isLoading) ? (
+                    <span className="flex items-center gap-2 h-6 text-[15px] font-medium text-emerald-600 dark:text-emerald-400 animate-pulse">
+                      🌴 Đang phân tích trả lời câu hỏi....
                     </span>
                   ) : (
                     m.role === 'assistant' ? (

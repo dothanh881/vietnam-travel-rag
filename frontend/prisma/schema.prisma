@@ -8,65 +8,30 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// Model tiêu chuẩn bắt buộc của NextAuth để lưu tài khoản người dùng
 model User {
-  id            String    @id @default(cuid())
+  id            String         @id
+  email         String         @unique
   name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  chatSessions  ChatSession[]
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
 }
 
-model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?  @db.Text
-  session_state      String?
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// === TÙY BIẾN CHO HỆ THỐNG RAG CHAT ===
-model ChatSession {
-  id            String    @id @default(uuid())
-  title         String    @default("Cuộc trò chuyện mới")
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages      Message[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+model Conversation {
+  id        String    @id @default(uuid())
+  userId    String
+  title     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
 }
 
 model Message {
-  id            String    @id @default(uuid())
-  content       String    @db.Text
-  role          Role      // Enum: user hoặc assistant
-  chatSessionId String
-  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
-  createdAt     DateTime  @default(now())
-}
-
-enum Role {
-  user
-  assistant
+  id             String       @id @default(uuid())
+  conversationId String
+  role           String
+  content        String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
