@@ -66,7 +66,7 @@ def get_llm_generator() -> LLMGenerator:
         vllm_model="qwen-vivu", 
         vllm_base_url=NGROK_URL,
         vllm_api_key="sk-runpod-key",
-        ollama_model="hf.co/thanhdo881/qwen2.5-3b-vivu-vn:Q4_K_M"
+        ollama_model="hf.co/thanhdo881/qwen2.5-3b-vivu-travel-vn:Q4_K_M"
     )
 
 @lru_cache(maxsize=1)

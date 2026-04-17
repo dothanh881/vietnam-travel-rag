@@ -88,7 +88,7 @@ class LLMGenerator:
         # vì mô hình thường vứt đi các đoạn trả lời đúng 1 nửa câu hỏi nhiều vế (VD: Hỏi "A và B", đoạn văn có "A" dễ bị score = 0.00x).
         filtered_chunks = chunks
         
-        # Nếu không có chunks (nghĩa là rớt từ vòng Qdrant score < 0.35), trả về thẳng câu từ chối mà không gọi LLM để NGĂN CHẶN ảo giác 100%.
+        # Nếu không có chunks trả về thẳng câu từ chối mà không gọi LLM để NGĂN CHẶN ảo giác 100%.
         if not filtered_chunks:
             logger.warning(f" [LLM] Không tìm thấy ngữ cảnh cho câu hỏi: {question}. Từ chối tĩnh.")
             return "🌴 Xin lỗi, ViVu hiện chưa có thông tin chi tiết về câu hỏi này."
@@ -214,6 +214,6 @@ class LLMGenerator:
             if "Nội dung: " in text_content:
                 text_content = text_content.split("Nội dung: ", 1)[-1].strip()
 
-            parts.append(f"- THÔNG TIN {i+1}:\n{text_content}")
+            parts.append(f"- {text_content}")
 
         return "\n\n".join(parts)
