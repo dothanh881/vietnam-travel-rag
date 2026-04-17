@@ -18,8 +18,16 @@ from qdrant_client.models import (
 
 
 class TravelVectorStore:
-    def __init__(self, collection_name="travel_knowledge_base", dimension=1024, url="http://localhost:6333"):
-        self.client = QdrantClient(url=url, timeout=60) # Tăng timeout lên 60s
+    def __init__(self, collection_name="travel_knowledge_base", dimension=1024):
+        import os
+        from dotenv import load_dotenv
+        
+        load_dotenv()
+        
+        url = os.getenv("QDRANT_URL", "http://localhost:6333")
+        api_key = os.getenv("QDRANT_API_KEY")
+        
+        self.client = QdrantClient(url=url, api_key=api_key, timeout=60) # Tăng timeout lên 60s
         self.collection_name = collection_name
         self.dimension = dimension
 
