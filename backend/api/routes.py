@@ -60,13 +60,13 @@ def get_llm_generator() -> LLMGenerator:
     # URL CỦA NGROK: Bạn nhớ copy Link từ Google Colab paste vào đây trước khi bắt đầu bảo vệ Đồ án nhé!
     # LƯU Ý: Phải có hậu tố /v1 ở cuối link
     NGROK_URL = "https://unpatrician-underogatively-bronson.ngrok-free.dev/v1" 
-    
+
     return LLMGenerator(
         mode="vllm", # Mặc định
         vllm_model="qwen-vivu", 
         vllm_base_url=NGROK_URL,
         vllm_api_key="sk-runpod-key",
-        ollama_model="hf.co/thanhdo881/qwen2.5-3b-vivu-travel-vn:Q4_K_M"
+        ollama_model="hf.co/thanhdo881/qwen2.5-3b-vivu-travel-vn-GGUF:Q4_K_M"
     )
 
 @lru_cache(maxsize=1)

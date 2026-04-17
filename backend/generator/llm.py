@@ -65,13 +65,23 @@ class LLMGenerator:
             {"role": "user", "content": user_input}
         ]
         
-        response = active_client.chat.completions.create(
-            model=active_model,
-            messages=messages,
-            temperature=temp,
-            max_tokens=2048,
-            frequency_penalty=0.1
-        )
+        kwargs = {
+            "model": active_model,
+            "messages": messages,
+            "temperature": temp,
+            "max_tokens": 2048,
+            "stop": ["<|im_end|>", "<|endoftext|>"]
+        }
+        if self.mode == "vllm":
+            kwargs.update({
+                "frequency_penalty": 0.1,
+                "presence_penalty": 0.1,
+                "extra_body": {"repetition_penalty": 1.05}
+            })
+        else:
+            kwargs["frequency_penalty"] = 0.1
+            
+        response = active_client.chat.completions.create(**kwargs)
         
         ans = response.choices[0].message.content.strip()
         
@@ -97,7 +107,16 @@ class LLMGenerator:
 
         # 2. system = toàn bộ instructions từ .md | user = data động (context + câu hỏi)
         system_prompt = self.system_prompt
-        user_prompt = f"<context>\n{context}\n</context>\n\nCÂU HỎI:\n{question}"
+        user_prompt = f"""<context>
+{context}
+</context>
+
+CÂU HỎI: {question}
+
+Hướng dẫn trả lời:
+- Chỉ lấy thông tin từ <context> bên trên để trả lời.
+- Nếu KHÔNG tìm thấy câu trả lời: Chỉ nói ngắn gọn là ViVu chưa có thông tin.
+- Nếu CÓ tìm thấy câu trả lời: Bạn phải chèn mượt mà các từ khóa "Theo cẩm nang" hoặc "Mẹo nhỏ" vào bài viết. Cuối cùng kết thúc ngay lập tức bằng câu "Chúc bạn có...". SAU LỜI CHÚC, TUYỆT ĐỐI KHÔNG IN THÊM BẤT KỲ VĂN BẢN NÀO!"""
 
         # 3. Gọi lõi Generate
         ans = self.generate(prompt=system_prompt, user_input=user_prompt)
@@ -118,16 +137,26 @@ class LLMGenerator:
             {"role": "user", "content": user_input}
         ]
         
+        kwargs = {
+            "model": active_model,
+            "messages": messages,
+            "stream": True,
+            "temperature": temp,
+            "max_tokens": 2048,
+            "stop": ["<|im_end|>", "<|endoftext|>"]
+        }
+        if self.mode == "vllm":
+            kwargs.update({
+                "frequency_penalty": 0.1,
+                "presence_penalty": 0.1,
+                "extra_body": {"repetition_penalty": 1.05}
+            })
+        else:
+            kwargs["frequency_penalty"] = 0.1
+
         print(f"[LLM] Mode={self.mode} | Model={active_model} | Đang gọi API stream...")
         try:
-            response_stream = await active_async_client.chat.completions.create(
-                model=active_model,
-                messages=messages,
-                stream=True,
-                temperature=temp,
-                max_tokens=2048,
-                frequency_penalty=0.1
-            )
+            response_stream = await active_async_client.chat.completions.create(**kwargs)
         except Exception as e:
             print(f"[LLM ERROR] Không thể kết nối tới LLM: {type(e).__name__}: {e}")
             raise
@@ -165,7 +194,16 @@ class LLMGenerator:
 
         # system = toàn bộ instructions từ .md | user = data động (context + câu hỏi)
         system_prompt = self.system_prompt
-        user_prompt = f"<context>\n{context}\n</context>\n\nCÂU HỎI:\n{question}\n\n(Lưu ý hệ thống: Bắt buộc trình bày nội dung thành các đoạn văn ngắn và sử dụng gạch đầu dòng để dễ đọc, tuyệt đối không viết một mạch dài)."
+        user_prompt = f"""<context>
+{context}
+</context>
+
+CÂU HỎI: {question}
+
+Hướng dẫn trả lời:
+- Chỉ lấy thông tin từ <context> bên trên để trả lời.
+- Nếu KHÔNG tìm thấy câu trả lời: Chỉ nói ngắn gọn là ViVu chưa có thông tin.
+- Nếu CÓ tìm thấy câu trả lời: Bạn phải chèn mượt mà các từ khóa "Theo cẩm nang" hoặc "Mẹo nhỏ" vào bài viết. Cuối cùng kết thúc bằng "Chúc bạn có...". KHÔNG IN THÊM VĂN BẢN NÀO SAU KHI ĐÃ CHÚC!"""
 
         print(f"[LLM] Bắt đầu generate_answer_stream | Mode={self.mode}")
         yield "🌴 "
