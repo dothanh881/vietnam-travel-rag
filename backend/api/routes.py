@@ -57,8 +57,7 @@ def get_retriever() -> TravelRetriever:
 
 @lru_cache(maxsize=1)
 def get_llm_generator() -> LLMGenerator:
-    # URL CỦA NGROK: Bạn nhớ copy Link từ Google Colab paste vào đây trước khi bắt đầu bảo vệ Đồ án nhé!
-    # LƯU Ý: Phải có hậu tố /v1 ở cuối link
+
     NGROK_URL = "https://unpatrician-underogatively-bronson.ngrok-free.dev/v1" 
 
     return LLMGenerator(
@@ -86,7 +85,6 @@ def get_rag_pipeline() -> TravelRAGPipeline:
 def get_state_manager() -> TravelStateManager:
     return TravelStateManager()
 
-# Đã loại bỏ LLM Extractor do Zero-LLM FlashText hoạt động tốt hơn và chính xác 100%.
 
 
 # ==========================================
