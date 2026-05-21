@@ -72,6 +72,11 @@ export async function POST(req: Request) {
                                     controller.enqueue(
                                         new TextEncoder().encode('0:' + JSON.stringify(parsed.data) + '\n')
                                     );
+                                } else if (parsed.type === 'budget_chart' && parsed.data) {
+                                    // Gửi budget data qua 8: metadata event
+                                    controller.enqueue(
+                                        new TextEncoder().encode('8:' + JSON.stringify([{ type: 'budget_chart', data: parsed.data }]) + '\n')
+                                    );
                                 } else if (parsed.type === 'error' && parsed.data) {
                                     controller.enqueue(
                                         new TextEncoder().encode('0:' + JSON.stringify(`\n\n🚨 Lỗi: ${parsed.data}`) + '\n')

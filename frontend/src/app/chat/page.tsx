@@ -6,11 +6,15 @@ import { Send, Bot, MapPin, Cpu, Zap, Square, Sun, Moon, Menu, X, ChevronLeft, P
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import dynamic from 'next/dynamic';
+
+const BudgetChart = dynamic(() => import('@/components/BudgetChart'), { ssr: false });
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  budgetData?: any; // Budget chart data nếu có
 }
 
 interface Conversation {
@@ -140,8 +144,16 @@ export default function Chat() {
             } catch (_) { /* skip */ }
           } else if (t.startsWith('8:')) {
             try {
-              const data = JSON.parse(t.slice(2));
-              if (data.conversationId) setConversationId(data.conversationId);
+              const metaArr = JSON.parse(t.slice(2));
+              for (const meta of (Array.isArray(metaArr) ? metaArr : [metaArr])) {
+                if (meta.type === 'budget_chart' && meta.data) {
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, budgetData: meta.data } : m
+                  ));
+                } else if (meta.conversationId) {
+                  setConversationId(meta.conversationId);
+                }
+              }
             } catch (_) { /* skip */ }
           } else if (t.startsWith('3:')) {
             try {
@@ -338,6 +350,7 @@ export default function Chat() {
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {m.content}
                         </ReactMarkdown>
+                        {m.budgetData && <BudgetChart data={m.budgetData} />}
                       </div>
                     ) : (
                       <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{m.content}</p>

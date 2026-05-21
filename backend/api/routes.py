@@ -163,14 +163,19 @@ def chat_stream_endpoint(
             # 1. Báo cáo trạng thái ngay để mở luồng mượt mà
             yield f"data: {json.dumps({'type': 'status', 'data': f'* Đang tìm kiếm tài liệu (Chế độ: {generator.mode})...* ⏳'})}\n\n"
             
-            # 2. Bắt đầu quá trình RAG
-            answer_stream, raw_chunks = await pipeline.ask_stream(
+            # 2. Bắt đầu quá trình RAG — một số tool trả về 3-tuple (stream, chunks, metadata)
+            result = await pipeline.ask_stream(
                 question=request.query,
                 top_k=request.top_k,
                 destination=target_dest
             )
+            if len(result) == 3:
+                answer_stream, raw_chunks, metadata = result
+            else:
+                answer_stream, raw_chunks = result
+                metadata = None
             
-            # 1. Gửi Cấu trúc Nguồn dữ liệu (Sources) trước
+            # Gửi Sources
             sources = []
             for c in raw_chunks:
                 sources.append({
@@ -180,9 +185,12 @@ def chat_stream_endpoint(
                     "score": float(c.get("score", 0.0)),
                     "rerank_score": c.get("rerank_score")
                 })
-                
             yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
-            
+
+            # Nếu có metadata đặc biệt (VD: budget_chart) → gửi trước khi text stream
+            if metadata:
+                yield f"data: {json.dumps(metadata)}\n\n"
+
             # 2. Bắt đầu đẩy nội dung stream từ LLM về và tính toán thời gian
             first_token_lat = None
             async for token in answer_stream:

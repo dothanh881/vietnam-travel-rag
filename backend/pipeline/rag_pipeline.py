@@ -181,7 +181,9 @@ class TravelRAGPipeline:
             budget_json=budget_json,
             travel_style=style
         )
-        return stream, []
+        # Trả về budget dict trong metadata để routes.py emit chart event
+        return stream, [], {"type": "budget_chart", "data": budget}
+
 
     # ---------------------------------------------------------
     # TIỆN ÍCH
@@ -307,29 +309,73 @@ class TravelRAGPipeline:
 
     @observe(name="ViVu_RAG_Pipeline")
     async def ask_stream(self, question: str, top_k: int = 5, destination: str = None):
-        """Pipeline chính: Rule-based Router (không LLM) → Tool → Qwen 1.7B"""
+        """Pipeline chính: LLM Router → Tool(s) song song → LLM tổng hợp"""
+        import asyncio
 
         logger.info(f"[AGENT] Câu hỏi: '{question}'")
 
-        # ROUTING: Dùng gpt-4o-mini router (có fallback rule-based)
+        # ROUTING: LLM Router (Cloudflare/GPT) → fallback rule-based
         try:
             tool_call = await self.llm_router.route(question)
         except Exception:
-            tool_call = self._fast_route(question)
-        
-        tool_name = tool_call.get("tool")
-        kwargs    = tool_call.get("kwargs", {})
+            fb = self._fast_route(question)
+            tool_call = {"tools": [fb.get("tool", "search_knowledge_base")], "kwargs": fb.get("kwargs", {})}
 
-        logger.info(f"[AGENT] Route → '{tool_name}' | {list(kwargs.keys())}")
+        tool_names = tool_call.get("tools", ["search_knowledge_base"])
+        kwargs = tool_call.get("kwargs", {})
+        logger.info(f"[AGENT] Route → {tool_names} | {list(kwargs.keys())}")
 
-        if tool_name in self.tools:
-            return await self.tools[tool_name](
-                question=question,
-                destination=destination,
-                top_k=top_k,
-                **kwargs
-            )
+        # ── Single tool (luồng hiện tại) ──────────────────────────
+        if len(tool_names) == 1:
+            tool_name = tool_names[0]
+            if tool_name in self.tools:
+                return await self.tools[tool_name](
+                    question=question, destination=destination, top_k=top_k, **kwargs
+                )
+            logger.error(f"[AGENT] Tool '{tool_name}' không tồn tại!")
+            return self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này."), []
 
-        # Fallback an toàn
-        logger.error(f"[AGENT] Tool '{tool_name}' không tồn tại!")
-        return self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này."), []
+        # ── Multi-tool: chạy song song, merge kết quả ─────────────
+        logger.info(f"[AGENT] MULTI-TOOL: chạy song song {tool_names}")
+        tasks = []
+        for tname in tool_names:
+            if tname in self.tools:
+                tasks.append(self.tools[tname](
+                    question=question, destination=destination, top_k=top_k, **kwargs
+                ))
+        if not tasks:
+            return self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này."), []
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Gộp chunks và metadata từ tất cả tools
+        all_chunks = []
+        all_metadata = {}
+        tool_contexts = {}  # {tool_name: data} để truyền vào LLM
+
+        for tname, result in zip(tool_names, results):
+            if isinstance(result, Exception):
+                logger.warning(f"[MULTI-TOOL] {tname} thất bại: {result}")
+                continue
+            if len(result) == 3:
+                _, chunks, meta = result
+                if meta:
+                    all_metadata.update(meta)
+                    tool_contexts[tname] = meta.get("data")
+            else:
+                _, chunks = result[:2]
+            if chunks:
+                all_chunks.extend(chunks)
+
+        # Tổng hợp câu trả lời kết hợp
+        stream = self.llm_generator.generate_multi_tool_stream(
+            question=question,
+            chunks=all_chunks,
+            tool_contexts=tool_contexts,
+            tool_names=tool_names
+        )
+
+        # Nếu có metadata (VD: budget_chart), trả về 3-tuple
+        if all_metadata:
+            return stream, all_chunks, all_metadata
+        return stream, all_chunks

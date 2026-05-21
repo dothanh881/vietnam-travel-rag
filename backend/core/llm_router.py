@@ -6,40 +6,40 @@ from core.logger import get_logger
 logger = get_logger(__name__)
 
 ROUTER_SYSTEM_PROMPT = """Bạn là bộ định tuyến thông minh cho ứng dụng du lịch Việt Nam ViVu.
-Phân tích câu hỏi và trả về JSON định tuyến CHÍNH XÁC theo schema sau.
+Phân tích câu hỏi và trả về JSON định tuyến CHÍNH XÁC.
 
 TOOLS CÓ SẴN:
-- get_weather: Hỏi thời tiết, dự báo, có mưa không, nhiệt độ
-- plan_itinerary: Lập lịch trình, kế hoạch chuyến đi theo ngày
-- estimate_budget: Ước tính ngân sách, chi phí chuyến đi
+- get_weather: Thời tiết, dự báo, nhiệt độ
+- plan_itinerary: Lập lịch trình, kế hoạch theo ngày
+- estimate_budget: Ước tính ngân sách, chi phí
 - search_flights: Tìm chuyến bay, vé máy bay
-- search_knowledge_base: Hỏi địa điểm, ăn gì, chơi đâu, khách sạn, ẩm thực
-- combined_weather_rag: Hỏi thời tiết KÈM gợi ý địa điểm/hoạt động
-- plan_full_trip: Lập TOÀN BỘ chuyến đi (lịch + ngân sách + thời tiết cùng lúc)
+- search_knowledge_base: Địa điểm, ăn gì, chơi đâu, khách sạn, ẩm thực
 
-OUTPUT FORMAT (chỉ trả về JSON thuần, không markdown, không giải thích):
-{
-  "tool": "tên_tool",
-  "kwargs": {
-    "location": "tên địa danh hoặc null",
-    "date": "today|tomorrow|YYYY-MM-DD hoặc null",
-    "num_days": số ngày hoặc null,
-    "travel_style": "budget|mid|luxury hoặc null",
-    "num_people": số người hoặc null,
-    "query_arg": "câu hỏi tìm kiếm tối ưu cho RAG",
-    "from_city": "thành phố xuất phát hoặc null",
-    "to_city": "thành phố đến hoặc null",
-    "activity": "hoạt động dự kiến hoặc null"
-  }
-}
+OUTPUT FORMAT — chỉ trả về JSON thuần:
+Câu hỏi đơn (1 mục tiêu):
+{"tool": "tên_tool", "kwargs": {...}}
+
+Câu hỏi kết hợp (nhiều mục tiêu song song):
+{"tools": ["tool1", "tool2"], "kwargs": {...}}
+
+THAM SỐ KWARGS:
+- location: tên địa danh (null nếu không có)
+- date: "today"|"tomorrow"|"YYYY-MM-DD" (null nếu không có)
+- num_days: số ngày (null nếu không có)
+- travel_style: "budget"|"mid"|"luxury" (null nếu không có)
+- num_people: số người (null nếu không có)
+- query_arg: câu hỏi tối ưu cho RAG search
+- from_city: thành phố xuất phát (null nếu không có)
+- to_city: thành phố đến (null nếu không có)
+- activity: hoạt động dự kiến (null nếu không có)
 
 VÍ DỤ:
-- "Thời tiết Hà Nội ngày mai?" → tool: get_weather, location: Hà Nội, date: tomorrow
-- "Lập lịch 3 ngày Đà Lạt" → tool: plan_itinerary, location: Đà Lạt, num_days: 3
-- "Đi Phú Quốc 4 ngày tốn bao nhiêu?" → tool: estimate_budget, location: Phú Quốc, num_days: 4
-- "Có gì ăn ở Hội An?" → tool: search_knowledge_base, query_arg: ẩm thực đặc sản Hội An
-- "Thời tiết Sa Pa, phù hợp trekking không?" → tool: combined_weather_rag, location: Sa Pa
-- "Lập lịch + ngân sách 5 ngày Hạ Long cho 2 người" → tool: plan_full_trip
+- "Thời tiết Hà Nội ngày mai?" → {"tool":"get_weather","kwargs":{"location":"Hà Nội","date":"tomorrow"}}
+- "Lập lịch 3 ngày Đà Lạt" → {"tool":"plan_itinerary","kwargs":{"location":"Đà Lạt","num_days":3}}
+- "Có gì ăn ở Hội An?" → {"tool":"search_knowledge_base","kwargs":{"query_arg":"ẩm thực đặc sản Hội An"}}
+- "Đi Phú Quốc 4 ngày tốn bao nhiêu, có gì vui?" → {"tools":["estimate_budget","search_knowledge_base"],"kwargs":{"location":"Phú Quốc","num_days":4,"query_arg":"địa điểm vui chơi Phú Quốc"}}
+- "Lịch 3 ngày Đà Lạt và ngân sách" → {"tools":["plan_itinerary","estimate_budget"],"kwargs":{"location":"Đà Lạt","num_days":3}}
+- "Thời tiết Sa Pa, phù hợp trekking không, có chỗ nào đẹp?" → {"tools":["get_weather","search_knowledge_base"],"kwargs":{"location":"Sa Pa","activity":"trekking","query_arg":"địa điểm trekking Sa Pa"}}
 """
 
 # =============================================
@@ -122,22 +122,23 @@ class LLMRouter:
         )
         raw = response.choices[0].message.content.strip()
         parsed = json.loads(raw)
-        tool = parsed.get("tool", "search_knowledge_base")
         kwargs = {k: v for k, v in parsed.get("kwargs", {}).items() if v is not None}
-        return {"tool": tool, "kwargs": kwargs}
+
+        # Hỗ trợ cả "tool" (đơn) và "tools" (array)
+        if "tools" in parsed and isinstance(parsed["tools"], list):
+            return {"tools": parsed["tools"], "kwargs": kwargs}
+        tool = parsed.get("tool", "search_knowledge_base")
+        return {"tools": [tool], "kwargs": kwargs}
 
     async def route(self, question: str) -> dict:
         """
-        Thử lần lượt:
-          1. Cloudflare llama-3.1-8b (free, nhanh)
-          2. Cloudflare llama-3.3-70b (free, mạnh hơn)
-          3. GPT-4o-mini (paid backup)
-          4. Raise → pipeline fallback về rule-based
+        Thử lần lượt: Cloudflare → GPT-4o-mini → raise.
+        Luôn trả về {"tools": [...], "kwargs": {...}}
         """
         for provider in self.cf_clients + self.fallback_clients:
             try:
                 result = await self._call(provider, question)
-                logger.info(f"[LLMRouter] [{provider['name']}] → tool={result['tool']}")
+                logger.info(f"[LLMRouter] [{provider['name']}] → tools={result['tools']}")
                 return result
             except Exception as e:
                 logger.warning(f"[LLMRouter] [{provider['name']}] lỗi ({type(e).__name__}: {e}), thử tiếp...")
