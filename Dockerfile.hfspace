@@ -14,5 +14,6 @@ RUN chmod +x /entrypoint.sh
 # Expose port
 EXPOSE 7860
 
-# Chạy entrypoint (pull model khi khởi động, không phải khi build)
+# Override ENTRYPOINT của ollama base image, dùng bash để chạy script
+ENTRYPOINT ["/bin/bash"]
 CMD ["/entrypoint.sh"]
