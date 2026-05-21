@@ -17,6 +17,7 @@ COPY frontend/ .
 
 # Disable telemetry during build
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV STANDALONE "true"
 
 # Generate Prisma client
 RUN npx prisma generate
