@@ -1,0 +1,13 @@
+{% include "persona/identity.jinja" %}
+
+DỮ LIỆU NGÂN SÁCH ƯỚC TÍNH (JSON):
+{{ budget_json }}
+
+CÂU HỎI: {{ question }}
+
+YÊU CẦU TRẢ LỜI:
+1. Tóm tắt tổng chi phí ước tính cho chuyến đi (bao gồm vé máy bay nếu có).
+2. Giải thích ngắn gọn từng hạng mục: ăn, ở, đi lại, vé tham quan.
+3. Nêu 1-2 mẹo tiết kiệm thực tế phù hợp với phong cách {{ travel_style }}.
+4. KHÔNG đọc tên key JSON. Dùng số liệu từ JSON để trả lời.
+5. Format số tiền rõ ràng (VD: 2.500.000 VNĐ hoặc ~2,5 triệu). Ngắn gọn, thân thiện, emoji.

@@ -278,6 +278,18 @@ class LLMGenerator:
         async for token in self.generate_stream(prompt="", user_input=rendered_prompt):
             yield token
 
+    async def generate_budget_stream(self, question: str, budget_json: str, travel_style: str = "mid"):
+        """Giải thích ngân sách ước tính theo cách thân thiện."""
+        rendered_prompt = self._render_prompt(
+            "generation/budget_answer.jinja",
+            question=question,
+            budget_json=budget_json,
+            travel_style=travel_style
+        )
+        yield "💰 "
+        async for token in self.generate_stream(prompt="", user_input=rendered_prompt):
+            yield token
+
     async def generate_combined_stream(self, question: str, weather_info: str, chunks: list[dict]):
         """Tổng hợp cả thời tiết + địa điểm RAG trong một câu trả lời mạch lạc."""
         context = self._build_context(chunks) if chunks else ""

@@ -3,6 +3,7 @@ from langfuse import observe
 from fastapi.concurrency import run_in_threadpool
 from core.logger import get_logger
 from core.tools_exec import fetch_real_weather
+from core.tools_exec_budget import estimate_budget, format_budget_for_llm
 from core.llm_router import LLMRouter
 
 logger = get_logger(__name__)
@@ -18,9 +19,10 @@ class TravelRAGPipeline:
             "search_knowledge_base": self._tool_search_kb,
             "get_weather": self._tool_get_weather,
             "combined": self._tool_combined,
-            "combined_weather_rag": self._tool_combined,  # alias
+            "combined_weather_rag": self._tool_combined,
             "plan_itinerary": self._tool_plan_itinerary,
             "plan_full_trip": self._tool_plan_full_trip,
+            "estimate_budget": self._tool_estimate_budget,
         }
 
     # ---------------------------------------------------------
@@ -156,6 +158,30 @@ class TravelRAGPipeline:
             weather_info=real_weather
         )
         return stream, chunks
+
+    async def _tool_estimate_budget(self, question: str, location: str = None,
+                                     num_days: int = 3, num_people: int = 1,
+                                     travel_style: str = "mid", destination: str = None,
+                                     **kwargs):
+        """Ước tính ngân sách chuyến đi và giải thích thân thiện."""
+        dest = location or destination or "Việt Nam"
+        style = travel_style or "mid"
+        logger.info(f"[TOOL: BUDGET] {dest} | {num_days}N | {num_people} người | {style}")
+
+        budget = estimate_budget(
+            destination=dest,
+            num_days=num_days,
+            num_people=num_people,
+            travel_style=style
+        )
+        budget_json = format_budget_for_llm(budget)
+
+        stream = self.llm_generator.generate_budget_stream(
+            question=question,
+            budget_json=budget_json,
+            travel_style=style
+        )
+        return stream, []
 
     # ---------------------------------------------------------
     # TIỆN ÍCH
