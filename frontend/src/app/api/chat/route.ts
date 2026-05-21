@@ -1,4 +1,7 @@
 // Route handler proxy SSE cho FastAPI - tuân thủ Vercel AI Data Stream Protocol v1
+// Tăng timeout lên 60s để hỗ trợ LLM streaming (mặc định Vercel chỉ 10s)
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
     try {
         const { messages, mode = "vllm", top_k = 3, conversationId: reqConversationId } = await req.json();
