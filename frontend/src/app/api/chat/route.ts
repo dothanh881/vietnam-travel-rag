@@ -16,7 +16,8 @@ export async function POST(req: Request) {
         }
 
         // --- FORWARD SANG FASTAPI ---
-        const backendRes = await fetch("http://localhost:8000/api/v1/chat/stream", {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const backendRes = await fetch(`${backendUrl}/api/v1/chat/stream`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
