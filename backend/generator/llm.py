@@ -356,16 +356,16 @@ class LLMGenerator:
         Tổng hợp kết quả từ nhiều tool chạy song song thành 1 câu trả lời.
         tool_contexts: {tool_name: data_dict} — VD: {"estimate_budget": {...budget...}}
         """
-        import json as _json
+        from core.tool_formatters import format_budget_text, format_weather_text
         context = self._build_context(chunks) if chunks else ""
 
         # Build extra context từ tool results (weather, budget, etc.)
         extra_sections = []
         for tname, data in (tool_contexts or {}).items():
             if data and tname == "estimate_budget":
-                extra_sections.append(f"NGÂN SÁCH ƯỚC TÍNH:\n{_json.dumps(data, ensure_ascii=False, indent=2)}")
+                extra_sections.append(f"NGÂN SÁCH ƯỚC TÍNH:\n{format_budget_text(data)}")
             elif data and tname == "get_weather":
-                extra_sections.append(f"DỮ LIỆU THỜI TIẾT:\n{_json.dumps(data, ensure_ascii=False, indent=2)}")
+                extra_sections.append(f"DỮ LIỆU THỜI TIẾT:\n{format_weather_text(data)}")
 
         extra = "\n\n".join(extra_sections)
         combined_prompt = f"""Trả lời ĐẦY ĐỦ câu hỏi sau dựa trên các dữ liệu được cung cấp:
@@ -374,10 +374,10 @@ CÂU HỎI: {question}
 
 {extra}
 
-THÔNG TIN ĐỊA ĐIỂM:
-{context if context else "Không có thông tin cụ thể."}
+THÔNG TIN ĐỊA ĐIỂM (TỪ KNOWLEDGE BASE):
+{context if context else "Không có thông tin cụ thể từ knowledge base."}
 
-YÊU CẦU: Trả lời tất cả các ý trong câu hỏi. Ngắn gọn, thân thiện, dùng emoji. KHÔNG bịa thông tin."""
+YÊU CẦU: Trả lời tự nhiên, thân thiện. Tổng hợp các thông tin trên thành một bài viết hoàn chỉnh. KHÔNG bịa đặt."""
 
         yield "🔍 "
         async for token in self.generate_stream(prompt="", user_input=combined_prompt):

@@ -1,9 +1,11 @@
 import time
+import json
 from langfuse import observe
 from fastapi.concurrency import run_in_threadpool
 from core.logger import get_logger
 from core.tools_exec import fetch_real_weather
-from core.tools_exec_budget import estimate_budget, format_budget_for_llm
+from core.tools_exec_budget import estimate_budget
+from core.tool_formatters import format_budget_text, format_weather_text
 from core.llm_router import LLMRouter
 
 logger = get_logger(__name__)
@@ -65,9 +67,11 @@ class TravelRAGPipeline:
         real_weather = await fetch_real_weather(location, date=date, activity=activity)
         logger.info(f"[TOOL: WEATHER] Kết quả thật: {real_weather}")
         
+        weather_text = format_weather_text(json.loads(real_weather))
+        
         logger.info("[AGENT] Truyền kết quả Thời tiết cho LLM tổng hợp...")
-        stream = self.llm_generator.generate_weather_stream(question, real_weather)
-        return stream, []
+        stream = self.llm_generator.generate_weather_stream(question, weather_text)
+        return stream, [], {"type": "weather", "data": json.loads(real_weather)}
 
     async def _tool_combined(self, question: str, location: str = None, date: str = "today",
                               activity: str = None, query_arg: str = None,
@@ -95,9 +99,12 @@ class TravelRAGPipeline:
             chunks = await run_in_threadpool(
                 self.reranker.rerank, query=rag_query, candidates=chunks, top_n=top_k
             )
+            
+        weather_text = format_weather_text(json.loads(real_weather))
 
-        stream = self.llm_generator.generate_combined_stream(question, real_weather, chunks)
-        return stream, chunks
+        stream = self.llm_generator.generate_combined_stream(question, weather_text, chunks)
+        return stream, chunks, {"type": "weather", "data": json.loads(real_weather)}
+
 
     async def _tool_plan_itinerary(self, question: str, location: str = None,
                                     num_days: int = 3, travel_style: str = "mid",
@@ -174,15 +181,16 @@ class TravelRAGPipeline:
             num_people=num_people,
             travel_style=style
         )
-        budget_json = format_budget_for_llm(budget)
+        budget_text = format_budget_text(budget)
 
         stream = self.llm_generator.generate_budget_stream(
             question=question,
-            budget_json=budget_json,
+            budget_json=budget_text,
             travel_style=style
         )
         # Trả về budget dict trong metadata để routes.py emit chart event
         return stream, [], {"type": "budget_chart", "data": budget}
+
 
 
     # ---------------------------------------------------------
