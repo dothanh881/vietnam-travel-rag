@@ -1,5 +1,3 @@
-
-
 # API
 fastapi
 uvicorn[standard]
@@ -7,7 +5,10 @@ pydantic
 
 # LLM & Embedding
 openai
+langchain-openai
 langchain-text-splitters
+langchain
+langchain-community
 
 # Vector Store
 qdrant-client
@@ -16,7 +17,7 @@ qdrant-client
 pypdf
 markitdown[all]
 docling
-python-dotenv
+
 # Chunking
 tiktoken        # (SemanticChunkSplitter)
 numpy          # cosine similarity cho semantic chunking
@@ -24,20 +25,10 @@ underthesea    # Vietnamese word segmentation cho BM25
 
 # Environment
 python-dotenv
-uvicorn
 
-
-sentence_transformers
-langchain
-langchain-community
-pypdf
-
-transformers
-accelerate
-bitsandbytes
-sentencepiece
-
+# Monitoring & Cache
 cohere
 langfuse
 flashtext
 upstash_redis
+langchain_openai

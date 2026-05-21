@@ -1,6 +1,6 @@
-import torch
+import os
 from functools import lru_cache
-from sentence_transformers import SentenceTransformer
+from langchain_openai import OpenAIEmbeddings
 from core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -12,24 +12,30 @@ _EMBED_CACHE: dict = {}
 
 class EmbeddingService:
     """
-    EmbeddingService (BGE optimized)
-
+    EmbeddingService (OpenAI optimized)
+    Sử dụng model text-embedding-3-small của OpenAI.
     """
 
     def __init__(
         self,
-        model_name: str = "BAAI/bge-m3",
-        device: str = None
+        model_name: str = "text-embedding-3-small",
+        device: str = None # Không dùng tới cho OpenAI API nhưng giữ lại để tương thích signature cũ
     ):
         self.model_name = model_name
+        
+        # Load API key từ môi trường
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("OPENAI_API_KEY không được tìm thấy trong biến môi trường! EmbeddingService có thể sẽ lỗi.")
 
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Loading embedding model: {model_name} via OpenAI API")
 
-        logger.info(f"Loading embedding model: {model_name} on {self.device}")
+        self.model = OpenAIEmbeddings(
+            model=self.model_name,
+            openai_api_key=api_key
+        )
 
-        self.model = SentenceTransformer(model_name, device=self.device, local_files_only=True)
-
-        logger.info(f"EmbeddingService initialized | dim={self.dimension}")
+        logger.info(f"EmbeddingService initialized via OpenAI.")
 
     # --------------------------------------------------
     # PROPERTIES
@@ -37,23 +43,8 @@ class EmbeddingService:
 
     @property
     def dimension(self) -> int:
-        # get_sentence_embedding_dimension() đã deprecated, dùng get_embedding_dimension()
-        if hasattr(self.model, 'get_embedding_dimension'):
-            return self.model.get_embedding_dimension()
-        return self.model.get_sentence_embedding_dimension()
-
-    # --------------------------------------------------
-    # CORE EMBEDDING
-    # --------------------------------------------------
-
-    def _encode(self, texts, batch_size=32):
-        return self.model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=False,
-            convert_to_numpy=True,
-            normalize_embeddings=True   # 🔥 QUAN TRỌNG
-        )
+        # text-embedding-3-small có mặc định 1536 chiều
+        return 1536
 
     # --------------------------------------------------
     # DOCUMENT EMBEDDING
@@ -63,12 +54,13 @@ class EmbeddingService:
         if not texts:
             return []
 
-        logger.info(f"Encoding {len(texts)} documents...")
+        logger.info(f"Encoding {len(texts)} documents using OpenAI...")
 
-        #  BGE không bắt buộc instruction cho document
-        embeddings = self._encode(texts, batch_size=batch_size)
+        # OpenAI API xử lý batch tự động khá tốt, nhưng ta có thể chunk ra nếu số lượng lớn
+        # Langchain OpenAIEmbeddings mặc định chia chunk 1000 cho embed_documents
+        embeddings = self.model.embed_documents(texts)
 
-        return embeddings.tolist()
+        return embeddings
 
     # --------------------------------------------------
     # QUERY EMBEDDING ( QUAN TRỌNG NHẤT)
@@ -76,8 +68,7 @@ class EmbeddingService:
 
     def embed_query(self, query: str) -> list[float]:
         """
-        BGE yêu cầu prefix để search tốt hơn.
-        Có embedding cache để tránh tính toán lại cho cùng query.
+        Có embedding cache để tránh gọi API lại cho cùng câu hỏi.
         """
         # Cache key = normalized query
         cache_key = query.strip().lower()
@@ -85,8 +76,7 @@ class EmbeddingService:
             logger.debug(f"[EmbedCache] HIT: '{query[:40]}'")
             return _EMBED_CACHE[cache_key]
         
-        query_text = f"Represent this sentence for searching relevant passages: {query}"
-        embedding = self._encode([query_text])[0].tolist()
+        embedding = self.model.embed_query(query)
         
         # Lưu cache, giới hạn 256 entry (xóa entry cũ nhất nếu đầy)
         if len(_EMBED_CACHE) >= 256:
@@ -101,5 +91,4 @@ class EmbeddingService:
     # --------------------------------------------------
 
     def embed_text(self, text: str) -> list[float]:
-        embedding = self._encode([text])[0]
-        return embedding.tolist()
+        return self.embed_query(text)

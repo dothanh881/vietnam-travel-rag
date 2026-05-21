@@ -31,9 +31,12 @@ class LLMGenerator:
         # Sử dụng Qwen2.5-1.5B-Instruct chạy Local trên Ollama làm Não (Router).
         # Bản Instruct gốc giữ được khả năng tuân thủ JSON xuất sắc.
         self.brain_model = "hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M"
+        
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        
         self.async_brain_client = AsyncOpenAI(
-            base_url="http://localhost:11434/v1", 
-            api_key="ollama" # Gọi thẳng xuống Ollama Local
+            base_url=ollama_base_url, 
+            api_key="ollama" # Gọi thẳng xuống Ollama Local/Cloud
         )
         
         # ==========================================
@@ -44,8 +47,8 @@ class LLMGenerator:
         self.async_vllm_client = AsyncOpenAI(base_url=vllm_base_url, api_key=vllm_api_key)
         
         self.ollama_model = ollama_model
-        self.ollama_client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-        self.async_ollama_client = AsyncOpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        self.ollama_client = OpenAI(base_url=ollama_base_url, api_key="ollama")
+        self.async_ollama_client = AsyncOpenAI(base_url=ollama_base_url, api_key="ollama")
 
         # Khởi tạo Jinja2 Environment cho Prompts
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

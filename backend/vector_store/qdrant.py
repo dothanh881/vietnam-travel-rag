@@ -18,7 +18,7 @@ from qdrant_client.models import (
 
 
 class TravelVectorStore:
-    def __init__(self, collection_name="travel_knowledge_base", dimension=1024):
+    def __init__(self, collection_name="travel_knowledge_base", dimension=1536):
         import os
         from dotenv import load_dotenv
         
