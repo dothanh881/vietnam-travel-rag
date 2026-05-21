@@ -200,8 +200,3 @@ Truy cập giao diện: `http://localhost:8001`
 .\.venv\Scripts\activate
 chainlit run app.py -w --port 8001
 
-
-api = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIiwic3ViamVjdCI6ImFwaS1rZXk6MWMxYzUyOGYtN2MwNS00YzEyLTkyMjgtMDE5MzRjOGNkM2MyIn0.GPSEe5Qb53fMO36T6ilY8Du4Io-YGXtLErsZFV_YoS4
-
-
-cluster end: https://67806258-60d1-4898-a9e9-d43c8d10ef03.eu-central-1-0.aws.cloud.qdrant.io
