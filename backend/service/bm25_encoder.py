@@ -166,7 +166,8 @@ class TravelBM25Encoder:
         - is_query=True: Dùng lúc người dùng hỏi -> Chỉ lấy IDF để tăng tốc và ưu tiên từ khóa hiếm.
         """
         if not self._fitted:
-            raise RuntimeError("TravelBM25Encoder chưa được fit. Hãy gọi fit() hoặc load() trước.")
+            logger.warning("[BM25] Encoder chưa được fit, trả về sparse vector rỗng (chỉ dùng Dense Search).")
+            return SparseVector(indices=[], values=[])
 
         tokens = self._tokenize(text)
         if not tokens:
