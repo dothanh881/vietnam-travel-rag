@@ -158,7 +158,7 @@ export default function BudgetChart({ data }: BudgetChartProps) {
                 width={90}
               />
               <Tooltip
-                formatter={(val: number) => [`${val.toLocaleString("vi-VN")} VNĐ`, ""]}
+                formatter={(val: any) => [`${Number(val).toLocaleString("vi-VN")} VNĐ`, ""]}
                 contentStyle={{ background: "#111827", border: "1px solid #7c3aed33" }}
                 labelStyle={{ color: "#a78bfa" }}
               />
