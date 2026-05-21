@@ -291,6 +291,54 @@ class LLMGenerator:
         async for token in self.generate_stream(prompt="", user_input=rendered_prompt):
             yield token
 
+    async def generate_itinerary_stream(self, question: str, chunks: list[dict],
+                                         destination: str = "", num_days: int = 3,
+                                         travel_style: str = "mid", num_people: int = 1):
+        """Sinh lịch trình du lịch chi tiết từng ngày."""
+        context = self._build_context(chunks) if chunks else ""
+        rendered_prompt = self._render_prompt(
+            "generation/itinerary_answer.jinja",
+            question=question,
+            context=context,
+            destination=destination,
+            num_days=num_days,
+            travel_style=travel_style,
+            num_people=num_people
+        )
+        yield "🗓️ "
+        async for token in self.generate_stream(prompt="", user_input=rendered_prompt):
+            yield token
+
+    async def generate_full_trip_stream(self, question: str, chunks: list[dict],
+                                         destination: str = "", num_days: int = 3,
+                                         travel_style: str = "mid", num_people: int = 1,
+                                         weather_info: str = ""):
+        """Lập lịch trình đầy đủ kết hợp thời tiết + địa điểm + ngân sách."""
+        context = self._build_context(chunks) if chunks else ""
+        rendered_prompt = self._render_prompt(
+            "generation/itinerary_answer.jinja",
+            question=question,
+            context=context,
+            destination=destination,
+            num_days=num_days,
+            travel_style=travel_style,
+            num_people=num_people
+        )
+        # Prepend weather summary nếu có
+        if weather_info:
+            import json as _json
+            try:
+                w = _json.loads(weather_info)
+                fc = w.get("focus_forecast", {})
+                weather_note = f"\n\nLƯU Ý THỜI TIẾT: {fc.get('condition','')}, {fc.get('min_temp_C','?')}-{fc.get('max_temp_C','?')}°C\n"
+                rendered_prompt = rendered_prompt + weather_note
+            except Exception:
+                pass
+        yield "🗓️⛅ "
+        async for token in self.generate_stream(prompt="", user_input=rendered_prompt):
+            yield token
+
+
     def _fix_formatting(self, text: str) -> str:
         text = re.sub('([^\\r\\n])(\\n?- )', '\\1\n\n- ', text)
         text = text.replace('\u2022 ', '\n\n- ')

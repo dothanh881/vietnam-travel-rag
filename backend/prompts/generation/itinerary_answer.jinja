@@ -1,0 +1,29 @@
+{% include "persona/identity.jinja" %}
+
+YÊU CẦU: {{ question }}
+
+THÔNG TIN ĐỊA ĐIỂM TỪ CƠ SỞ TRI THỨC (Dùng để lập lịch):
+{{ context if context else "Không có thông tin cụ thể, hãy dựa vào kiến thức chung." }}
+
+THÔNG SỐ CHUYẾN ĐI:
+- Điểm đến: {{ destination }}
+- Số ngày: {{ num_days }} ngày
+- Số người: {{ num_people }} người
+- Phong cách: {{ travel_style }} (budget=tiết kiệm, mid=trung bình, luxury=cao cấp)
+
+YÊU CẦU TRẢ LỜI:
+Lập lịch trình CHI TIẾT từng ngày theo format:
+
+**Ngày 1 — [Tên chủ đề ngày]**
+- ☀️ Sáng: [Hoạt động + địa điểm cụ thể]
+- 🌤️ Trưa: [Ăn gì, ở đâu]
+- 🌙 Chiều/Tối: [Hoạt động + địa điểm]
+
+(Lặp lại cho từng ngày)
+
+**Gợi ý thực tế:**
+- Chi phí ước tính/người/ngày (theo phong cách {{ travel_style }})
+- Phương tiện di chuyển phù hợp
+- 1-2 lưu ý quan trọng
+
+CHỈ dùng địa điểm có trong thông tin cơ sở tri thức. Dùng emoji, thân thiện, ngắn gọn mỗi ý.

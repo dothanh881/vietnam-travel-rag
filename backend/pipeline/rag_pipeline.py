@@ -3,6 +3,7 @@ from langfuse import observe
 from fastapi.concurrency import run_in_threadpool
 from core.logger import get_logger
 from core.tools_exec import fetch_real_weather
+from core.llm_router import LLMRouter
 
 logger = get_logger(__name__)
 
@@ -11,11 +12,15 @@ class TravelRAGPipeline:
         self.retriever = retriever
         self.llm_generator = llm_generator
         self.reranker = reranker
+        self.llm_router = LLMRouter()
         
         self.tools = {
             "search_knowledge_base": self._tool_search_kb,
             "get_weather": self._tool_get_weather,
-            "combined": self._tool_combined
+            "combined": self._tool_combined,
+            "combined_weather_rag": self._tool_combined,  # alias
+            "plan_itinerary": self._tool_plan_itinerary,
+            "plan_full_trip": self._tool_plan_full_trip,
         }
 
     # ---------------------------------------------------------
@@ -92,6 +97,65 @@ class TravelRAGPipeline:
         stream = self.llm_generator.generate_combined_stream(question, real_weather, chunks)
         return stream, chunks
 
+    async def _tool_plan_itinerary(self, question: str, location: str = None,
+                                    num_days: int = 3, travel_style: str = "mid",
+                                    num_people: int = 1, destination: str = None,
+                                    top_k: int = 5, **kwargs):
+        """Lập lịch trình du lịch dựa trên RAG context"""
+        import asyncio
+        dest = location or destination or "Việt Nam"
+        rag_query = f"lịch trình du lịch {dest} {num_days} ngày địa điểm tham quan ăn uống"
+        logger.info(f"[TOOL: ITINERARY] Lập lịch {num_days} ngày tại {dest}")
+
+        retrieval_top_k = 15 if self.reranker else top_k
+        chunks = await run_in_threadpool(
+            self.retriever.retrieve, query=rag_query,
+            top_k=retrieval_top_k, destination=dest
+        )
+        if self.reranker and chunks:
+            chunks = await run_in_threadpool(
+                self.reranker.rerank, query=rag_query,
+                candidates=chunks, top_n=top_k
+            )
+
+        stream = self.llm_generator.generate_itinerary_stream(
+            question=question, chunks=chunks,
+            destination=dest, num_days=num_days,
+            travel_style=travel_style, num_people=num_people
+        )
+        return stream, chunks
+
+    async def _tool_plan_full_trip(self, question: str, location: str = None,
+                                    num_days: int = 3, travel_style: str = "mid",
+                                    num_people: int = 1, destination: str = None,
+                                    top_k: int = 5, **kwargs):
+        """Lập lịch trình + thời tiết song song (full trip planning)"""
+        import asyncio
+        dest = location or destination or "Việt Nam"
+        rag_query = f"lịch trình du lịch {dest} {num_days} ngày địa điểm tham quan ăn uống"
+        logger.info(f"[TOOL: FULL_TRIP] {num_days} ngày tại {dest} ({num_people} người, {travel_style})")
+
+        retrieval_top_k = 15 if self.reranker else top_k
+        weather_task = fetch_real_weather(dest, date="today")
+        rag_task = run_in_threadpool(
+            self.retriever.retrieve, query=rag_query,
+            top_k=retrieval_top_k, destination=dest
+        )
+        real_weather, chunks = await asyncio.gather(weather_task, rag_task)
+
+        if self.reranker and chunks:
+            chunks = await run_in_threadpool(
+                self.reranker.rerank, query=rag_query,
+                candidates=chunks, top_n=top_k
+            )
+
+        stream = self.llm_generator.generate_full_trip_stream(
+            question=question, chunks=chunks,
+            destination=dest, num_days=num_days,
+            travel_style=travel_style, num_people=num_people,
+            weather_info=real_weather
+        )
+        return stream, chunks
 
     # ---------------------------------------------------------
     # TIỆN ÍCH
@@ -221,8 +285,12 @@ class TravelRAGPipeline:
 
         logger.info(f"[AGENT] Câu hỏi: '{question}'")
 
-        # ROUTING: Thuần rule-based, không gọi LLM
-        tool_call = self._fast_route(question)
+        # ROUTING: Dùng gpt-4o-mini router (có fallback rule-based)
+        try:
+            tool_call = await self.llm_router.route(question)
+        except Exception:
+            tool_call = self._fast_route(question)
+        
         tool_name = tool_call.get("tool")
         kwargs    = tool_call.get("kwargs", {})
 
