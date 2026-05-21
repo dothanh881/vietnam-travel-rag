@@ -110,17 +110,35 @@ class LLMRouter:
 
     async def _call(self, provider: dict, question: str) -> dict:
         """Gọi 1 provider, raise exception nếu thất bại."""
-        response = await provider["client"].chat.completions.create(
-            model=provider["model"],
-            messages=[
+        kwargs_for_call = {
+            "model": provider["model"],
+            "messages": [
                 {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
                 {"role": "user", "content": question}
             ],
-            response_format={"type": "json_object"},
-            temperature=0.0,
-            max_tokens=256,
-        )
+            "temperature": 0.0,
+            "max_tokens": 256,
+        }
+        
+        # Cloudflare Workers AI hiện tại bị lỗi với {"type": "json_object"}
+        if provider["name"].startswith("OpenAI"):
+            kwargs_for_call["response_format"] = {"type": "json_object"}
+
+        response = await provider["client"].chat.completions.create(**kwargs_for_call)
         raw = response.choices[0].message.content.strip()
+        
+        # Lọc bỏ markdown code block nếu có
+        import re
+        match = re.search(r'```(?:json)?\s*({.*?})\s*```', raw, re.DOTALL)
+        if match:
+            raw = match.group(1)
+        else:
+            # Fallback cắt thủ công từ { đến }
+            start = raw.find('{')
+            end = raw.rfind('}')
+            if start != -1 and end != -1:
+                raw = raw[start:end+1]
+
         parsed = json.loads(raw)
         kwargs = {k: v for k, v in parsed.get("kwargs", {}).items() if v is not None}
 
