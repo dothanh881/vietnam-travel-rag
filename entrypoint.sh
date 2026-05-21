@@ -1,31 +1,22 @@
 #!/bin/bash
 
-echo "Khoi dong Ollama server..."
-ollama serve &
-OLLAMA_PID=$!
-
-# Cho Ollama thoi gian khoi dong (khong dung set -e de tranh thoat som)
-echo "Doi Ollama khoi dong (10 giay)..."
-sleep 10
-
-# Kiem tra Ollama da san sang chua
-MAX_WAIT=60
-WAITED=0
-until curl -sf http://localhost:7860/api/version > /dev/null 2>&1; do
-    if [ $WAITED -ge $MAX_WAIT ]; then
-        echo "Ollama khong khoi dong sau ${MAX_WAIT}s, tiep tuc..."
-        break
-    fi
-    sleep 3
-    WAITED=$((WAITED + 3))
-done
-echo "Ollama san sang!"
-
-# Pull model
 MODEL="hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M"
-echo "Dang tai model: $MODEL ..."
-ollama pull "$MODEL"
-echo "Model tai xong!"
 
-# Giu server chay
-wait $OLLAMA_PID
+echo "=== Buoc 1: Khoi dong server noi bo de pull model ==="
+# Chay Ollama tren port noi bo 11434 truoc (port 7860 chua mo ra ngoai)
+OLLAMA_HOST=0.0.0.0:11434 ollama serve &
+TEMP_PID=$!
+
+echo "Dang doi server noi bo san sang..."
+sleep 8
+
+echo "Dang tai model: $MODEL"
+OLLAMA_HOST=http://localhost:11434 ollama pull "$MODEL" && echo "Model da tai xong!" || echo "Pull that bai, tiep tuc..."
+
+# Tat server noi bo
+kill $TEMP_PID 2>/dev/null || true
+sleep 3
+
+echo "=== Buoc 2: Khoi dong server chinh tren port 7860 (model da san sang) ==="
+# OLLAMA_HOST=0.0.0.0:7860 da duoc set trong Dockerfile ENV
+exec ollama serve
