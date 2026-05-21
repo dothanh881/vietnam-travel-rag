@@ -31,7 +31,8 @@ interface BudgetChartProps {
   data: BudgetData;
 }
 
-const COLORS = ["#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe"];
+// Emerald / Teal theme
+const COLORS = ["#10b981", "#34d399", "#059669", "#6ee7b7", "#047857"];
 const LABEL_MAP: Record<string, string> = {
   accommodation: "🏨 Chỗ ở",
   food: "🍜 Ăn uống",
@@ -50,9 +51,9 @@ const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const d = payload[0];
     return (
-      <div className="bg-gray-900 border border-purple-500/30 rounded-lg p-3 text-sm shadow-xl">
-        <p className="font-semibold text-purple-300">{d.name}</p>
-        <p className="text-white">{d.value.toLocaleString("vi-VN")} VNĐ/người/ngày</p>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm shadow-lg">
+        <p className="font-semibold text-emerald-600 dark:text-emerald-400">{d.name}</p>
+        <p className="text-gray-800 dark:text-gray-200">{d.value.toLocaleString("vi-VN")} VNĐ</p>
       </div>
     );
   }
@@ -81,50 +82,53 @@ export default function BudgetChart({ data }: BudgetChartProps) {
   ];
 
   return (
-    <div className="budget-chart-container my-4 rounded-2xl border border-purple-500/20 bg-gray-900/60 backdrop-blur-sm p-5">
+    <div className="budget-chart-container my-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 p-5">
       {/* Header */}
-      <div className="mb-4">
-        <h3 className="text-lg font-bold text-purple-300">
+      <div className="mb-5 border-b border-gray-100 dark:border-gray-700 pb-3">
+        <h3 className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
           💰 Ngân sách ước tính — {data.destination}
         </h3>
-        <p className="text-sm text-gray-400 mt-1">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {data.num_days} ngày · {data.num_people} người · {data.travel_style}
         </p>
       </div>
 
       {/* Tổng tiền */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="rounded-xl bg-purple-900/40 border border-purple-500/30 p-3 text-center">
-          <p className="text-xs text-gray-400 mb-1">Tổng chi phí</p>
-          <p className="text-xl font-bold text-white">
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 p-4 text-center shadow-sm">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tổng chi phí</p>
+          <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
             {data.grand_total.toLocaleString("vi-VN")}
           </p>
-          <p className="text-xs text-purple-400">VNĐ</p>
+          <p className="text-xs font-medium text-emerald-600/70 dark:text-emerald-500 mt-1">VNĐ</p>
         </div>
-        <div className="rounded-xl bg-indigo-900/40 border border-indigo-500/30 p-3 text-center">
-          <p className="text-xs text-gray-400 mb-1">Mỗi người</p>
-          <p className="text-xl font-bold text-white">
+        <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800/30 p-4 text-center shadow-sm">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Mỗi người</p>
+          <p className="text-2xl font-bold text-teal-700 dark:text-teal-400">
             {data.grand_total_per_person.toLocaleString("vi-VN")}
           </p>
-          <p className="text-xs text-indigo-400">VNĐ</p>
+          <p className="text-xs font-medium text-teal-600/70 dark:text-teal-500 mt-1">VNĐ</p>
         </div>
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Pie Chart */}
-        <div>
-          <p className="text-xs text-gray-500 text-center mb-2">Chi phí/người/ngày</p>
-          <ResponsiveContainer width="100%" height={200}>
+        <div className="bg-gray-50 dark:bg-gray-900/30 rounded-xl p-3 border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 text-center mb-2 uppercase tracking-wide">
+            Chi phí / người / ngày
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie
                 data={pieData}
                 cx="50%"
                 cy="50%"
-                innerRadius={50}
-                outerRadius={80}
-                paddingAngle={3}
+                innerRadius={55}
+                outerRadius={85}
+                paddingAngle={2}
                 dataKey="value"
+                stroke="none"
               >
                 {pieData.map((_, index) => (
                   <Cell key={index} fill={COLORS[index % COLORS.length]} />
@@ -133,7 +137,7 @@ export default function BudgetChart({ data }: BudgetChartProps) {
               <Tooltip content={<CustomTooltip />} />
               <Legend
                 formatter={(value) => (
-                  <span className="text-xs text-gray-300">{value}</span>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{value}</span>
                 )}
               />
             </PieChart>
@@ -141,28 +145,30 @@ export default function BudgetChart({ data }: BudgetChartProps) {
         </div>
 
         {/* Bar Chart */}
-        <div>
-          <p className="text-xs text-gray-500 text-center mb-2">Tổng theo hạng mục (VNĐ)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={barData} layout="vertical" margin={{ left: 10, right: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+        <div className="bg-gray-50 dark:bg-gray-900/30 rounded-xl p-3 border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 text-center mb-2 uppercase tracking-wide">
+            Tổng theo hạng mục
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={barData} layout="vertical" margin={{ left: 5, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
               <XAxis
                 type="number"
                 tickFormatter={formatVND}
-                tick={{ fill: "#9ca3af", fontSize: 10 }}
+                tick={{ fill: "#9ca3af", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
               />
               <YAxis
                 type="category"
                 dataKey="name"
-                tick={{ fill: "#9ca3af", fontSize: 10 }}
-                width={90}
+                tick={{ fill: "#6b7280", fontSize: 11, fontWeight: 500 }}
+                width={95}
+                axisLine={false}
+                tickLine={false}
               />
-              <Tooltip
-                formatter={(val: any) => [`${Number(val).toLocaleString("vi-VN")} VNĐ`, ""]}
-                contentStyle={{ background: "#111827", border: "1px solid #7c3aed33" }}
-                labelStyle={{ color: "#a78bfa" }}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                 {barData.map((_, index) => (
                   <Cell key={index} fill={COLORS[index % COLORS.length]} />
                 ))}
@@ -174,3 +180,4 @@ export default function BudgetChart({ data }: BudgetChartProps) {
     </div>
   );
 }
+
