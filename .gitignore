@@ -7,8 +7,8 @@ __pycache__/
 env/
 .venv/
 venv/
-bin/
-lib/
+/bin/
+/lib/
 develop-eggs/
 dist/
 eggs/
