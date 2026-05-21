@@ -30,8 +30,11 @@ class TravelRAGPipeline:
     # ---------------------------------------------------------
     # ĐỊNH NGHĨA CÁC HÀM THỰC THI TOOL (TÁCH BIỆT LOGIC)
     # ---------------------------------------------------------
-    async def _tool_search_kb(self, query_arg: str, question: str, destination: str = None, top_k: int = 5):
+    async def _tool_search_kb(self, query_arg: str = None, question: str = None, destination: str = None, top_k: int = 5, **kwargs):
         """Thực thi nghiệp vụ RAG: Tìm kiếm Vector DB và sinh câu trả lời"""
+        # Tránh lỗi thiếu query_arg nếu LLM không trả về
+        query_arg = query_arg or question
+
         logger.info(f"[TOOL: RAG] Bắt đầu tìm kiếm vector cho: '{query_arg}'")
         retrieval_top_k = 15 if self.reranker else top_k
         
