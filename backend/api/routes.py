@@ -34,7 +34,10 @@ OUTPUT_DIR = os.path.join(DATA_LAKE_DIR, "chunks")    # Nơi xuất Payload
 
 @lru_cache(maxsize=1)
 def get_bm25_encoder() -> TravelBM25Encoder:
-    return TravelBM25Encoder(vocab_path=os.path.join(DATA_LAKE_DIR, "vocab.json"))
+    # vocab.json được bundle sẵn trong repo tại backend/data/vocab.json
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    vocab_path = os.path.join(base_dir, "data", "vocab.json")
+    return TravelBM25Encoder(vocab_path=vocab_path)
 
 @lru_cache(maxsize=1)
 def get_embedding_service() -> EmbeddingService:
