@@ -15,6 +15,12 @@ def format_budget_text(budget: dict) -> str:
         trans = breakdown.get("transport_local", 0)
         ent = breakdown.get("entrance_fee", 0)
         
+        total_acc = acc * days * ppl
+        total_food = food * days * ppl
+        total_trans = trans * days * ppl
+        total_ent = ent * days * ppl
+        total_misc = breakdown.get("misc", 0) * days * ppl
+        
         flight = budget.get("flight_estimate_total", 0)
         total = budget.get("grand_total", 0)
         
@@ -23,14 +29,15 @@ def format_budget_text(budget: dict) -> str:
             f"- Tổng chi phí dự kiến: {total:,} VNĐ.\n"
         )
         if flight > 0:
-            text += f"- Tiền vé máy bay khứ hồi (ước tính): {flight:,} VNĐ.\n"
+            text += f"- Tiền vé máy bay khứ hồi (tổng cộng): {flight:,} VNĐ.\n"
             
         text += (
-            f"- Chi phí trung bình mỗi ngày (1 người):\n"
-            f"  + Khách sạn/Chỗ ở: {acc:,} VNĐ\n"
-            f"  + Ăn uống: {food:,} VNĐ\n"
-            f"  + Đi lại tại chỗ: {trans:,} VNĐ\n"
-            f"  + Vé tham quan: {ent:,} VNĐ\n"
+            f"- Chi tiết phân bổ ngân sách (Tổng cộng cho cả chuyến đi):\n"
+            f"  + Khách sạn/Chỗ ở: {total_acc:,} VNĐ\n"
+            f"  + Ăn uống: {total_food:,} VNĐ\n"
+            f"  + Đi lại tại chỗ: {total_trans:,} VNĐ\n"
+            f"  + Vé tham quan: {total_ent:,} VNĐ\n"
+            f"  + Chi phí linh tinh (nước, ăn vặt): {total_misc:,} VNĐ\n"
         )
         return text
     except Exception as e:
