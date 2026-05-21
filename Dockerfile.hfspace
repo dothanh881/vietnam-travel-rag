@@ -1,22 +1,18 @@
 FROM ollama/ollama:latest
 
-# HF Spaces thường expose port 7860
+# Cấu hình môi trường HuggingFace Spaces
 ENV OLLAMA_HOST=0.0.0.0:7860
-# Cho phép CORS từ mọi domain (Railway, Vercel)
-ENV OLLAMA_ORIGINS="*"
-# Thư mục lưu model trên HF Spaces (cấp quyền ghi)
 ENV OLLAMA_MODELS=/.ollama/models
 
 # Cấp quyền đọc/ghi cho user mặc định (1000) của HF Spaces
 RUN mkdir -p /.ollama/models && chmod -R 777 /.ollama
 
-# Bước quan trọng: Chạy Ollama ngầm, tải model Voice về, sau đó tắt. 
-# Model sẽ được lưu vào bộ nhớ cache của Image Docker.
-RUN ollama serve & sleep 5 && \
-    ollama pull hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Expose port
 EXPOSE 7860
 
-# Khởi động lại Ollama khi container chạy
-ENTRYPOINT ["ollama", "serve"]
+# Chạy entrypoint (pull model khi khởi động, không phải khi build)
+CMD ["/entrypoint.sh"]
