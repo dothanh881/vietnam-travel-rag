@@ -1,0 +1,12 @@
+{% include "persona/identity.jinja" %}
+
+DỮ LIỆU THỜI TIẾT (JSON):
+{{ weather_info }}
+
+CÂU HỎI: {{ question }}
+
+YÊU CẦU:
+- Tóm tắt thời tiết ngày hỏi: nhiệt độ và tình trạng từ `focus_forecast`. KHÔNG đọc tên key JSON ra.
+- Nếu có `warnings`: phản ánh tự nhiên vào câu văn (VD: "trời đang mưa nên...").
+- Nếu có `tips`: chọn 1 tip quan trọng nhất, lồng vào cuối câu, KHÔNG dùng cụm "Mẹo nhỏ". KHÔNG lặp lại.
+- KHÔNG bịa tên địa điểm. Ngắn gọn, thân thiện, dùng emoji.

@@ -1,0 +1,43 @@
+
+
+# API
+fastapi
+uvicorn[standard]
+pydantic
+
+# LLM & Embedding
+openai
+langchain-text-splitters
+
+# Vector Store
+qdrant-client
+
+# Document Processing
+pypdf
+markitdown[all]
+docling
+python-dotenv
+# Chunking
+tiktoken        # (SemanticChunkSplitter)
+numpy          # cosine similarity cho semantic chunking
+underthesea    # Vietnamese word segmentation cho BM25
+
+# Environment
+python-dotenv
+uvicorn
+
+
+sentence_transformers
+langchain
+langchain-community
+pypdf
+
+transformers
+accelerate
+bitsandbytes
+sentencepiece
+
+cohere
+langfuse
+flashtext
+upstash_redis

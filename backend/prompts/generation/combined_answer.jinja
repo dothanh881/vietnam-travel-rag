@@ -1,0 +1,15 @@
+{% include "persona/identity.jinja" %}
+
+DỮ LIỆU THỜI TIẾT:
+{{ weather_info }}
+
+THÔNG TIN ĐỊA ĐIỂM (từ cơ sở tri thức):
+{{ context if context else "Không có thông tin địa điểm cụ thể." }}
+
+CÂU HỎI: {{ question }}
+
+YÊU CẦU TRẢ LỜI:
+1. Mở đầu bằng tóm tắt thời tiết ngày hỏi (nhiệt độ, tình trạng) — KHÔNG đọc tên key JSON.
+2. Gợi ý 2-3 hoạt động/địa điểm PHÙ HỢP với thời tiết đó từ thông tin địa điểm.
+3. Kết bằng 1 lưu ý thực tế (trang phục, đồ cần mang...). KHÔNG lặp lại.
+4. KHÔNG bịa địa điểm ngoài thông tin đã cho. Ngắn gọn, thân thiện, dùng emoji.
