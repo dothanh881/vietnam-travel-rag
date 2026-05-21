@@ -17,7 +17,7 @@ TOOLS CÓ SẴN:
 - combined_weather_rag: Hỏi thời tiết KÈM gợi ý địa điểm/hoạt động
 - plan_full_trip: Lập TOÀN BỘ chuyến đi (lịch + ngân sách + thời tiết cùng lúc)
 
-OUTPUT FORMAT (chỉ trả về JSON, không giải thích):
+OUTPUT FORMAT (chỉ trả về JSON thuần, không markdown, không giải thích):
 {
   "tool": "tên_tool",
   "kwargs": {
@@ -43,25 +43,22 @@ VÍ DỤ:
 """
 
 # =============================================
-# CẤU HÌNH FALLBACK CHAIN: Gemini → Groq → GPT
+# CLOUDFLARE WORKERS AI — Model miễn phí
+# Docs: https://developers.cloudflare.com/workers-ai/models/
+# Endpoint OpenAI-compatible:
+#   https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1
 # =============================================
-PROVIDERS = [
-    {
-        "name": "Gemini",
-        "model": "gemini-2.0-flash-lite",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "api_key_env": "GEMINI_API_KEY",
-    },
-    {
-        "name": "Groq",
-        "model": "llama-3.3-70b-versatile",
-        "base_url": "https://api.groq.com/openai/v1",
-        "api_key_env": "GROQ_API_KEY",
-    },
+CF_MODELS = [
+    "@cf/meta/llama-3.1-8b-instruct",    # Nhanh, instruction following tốt
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",  # Mạnh hơn, vẫn free
+]
+
+# Fallback cuối cùng nếu Cloudflare lỗi
+FALLBACK_PROVIDERS = [
     {
         "name": "GPT-4o-mini",
         "model": "gpt-4o-mini",
-        "base_url": None,  # OpenAI default
+        "base_url": None,
         "api_key_env": "OPENAI_API_KEY",
     },
 ]
@@ -69,32 +66,50 @@ PROVIDERS = [
 
 class LLMRouter:
     """
-    Router thông minh với fallback chain: Gemini Flash → Groq → GPT-4o-mini.
-    Tự động chuyển sang provider tiếp theo nếu bị rate-limit hoặc lỗi.
+    Router thông minh dùng Cloudflare Workers AI (miễn phí, 1 key).
+    Fallback về GPT-4o-mini nếu Cloudflare lỗi.
+    Fallback cuối về rule-based nếu tất cả thất bại.
+
+    Cần env vars:
+        CLOUDFLARE_API_TOKEN  — API token từ dash.cloudflare.com
+        CLOUDFLARE_ACCOUNT_ID — Account ID từ dash.cloudflare.com
+        OPENAI_API_KEY        — Backup, chỉ dùng khi CF lỗi
     """
 
     def __init__(self):
-        self.providers = []
-        for p in PROVIDERS:
+        self.cf_clients = []
+        self.fallback_clients = []
+
+        # Khởi tạo Cloudflare client (1 key, nhiều model)
+        cf_token = os.getenv("CLOUDFLARE_API_TOKEN")
+        cf_account = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+        if cf_token and cf_account:
+            cf_base_url = f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"
+            cf_client = AsyncOpenAI(
+                api_key=cf_token,
+                base_url=cf_base_url,
+                timeout=6.0,
+            )
+            for model in CF_MODELS:
+                self.cf_clients.append({"name": f"CF/{model.split('/')[-1]}", "model": model, "client": cf_client})
+            logger.info(f"[LLMRouter] Cloudflare AI: {len(CF_MODELS)} models sẵn sàng")
+        else:
+            logger.warning("[LLMRouter] Thiếu CLOUDFLARE_API_TOKEN hoặc CLOUDFLARE_ACCOUNT_ID")
+
+        # Khởi tạo fallback providers
+        for p in FALLBACK_PROVIDERS:
             api_key = os.getenv(p["api_key_env"])
             if api_key:
-                client = AsyncOpenAI(
-                    api_key=api_key,
-                    base_url=p["base_url"],
-                    timeout=5.0,
-                )
-                self.providers.append({
-                    "name": p["name"],
-                    "model": p["model"],
-                    "client": client,
-                })
-                logger.info(f"[LLMRouter] Đã cấu hình provider: {p['name']} ({p['model']})")
+                client = AsyncOpenAI(api_key=api_key, base_url=p["base_url"], timeout=5.0)
+                self.fallback_clients.append({"name": p["name"], "model": p["model"], "client": client})
+                logger.info(f"[LLMRouter] Fallback: {p['name']}")
 
-        if not self.providers:
-            logger.warning("[LLMRouter] Không có API key nào! Sẽ dùng rule-based fallback.")
+        all_providers = self.cf_clients + self.fallback_clients
+        if not all_providers:
+            logger.warning("[LLMRouter] Không có provider nào! Sẽ dùng rule-based.")
 
-    async def _call_provider(self, provider: dict, question: str) -> dict:
-        """Gọi một provider cụ thể, raise nếu thất bại."""
+    async def _call(self, provider: dict, question: str) -> dict:
+        """Gọi 1 provider, raise exception nếu thất bại."""
         response = await provider["client"].chat.completions.create(
             model=provider["model"],
             messages=[
@@ -113,21 +128,20 @@ class LLMRouter:
 
     async def route(self, question: str) -> dict:
         """
-        Thử lần lượt từng provider theo thứ tự: Gemini → Groq → GPT-4o-mini.
-        Fallback về RAG nếu tất cả đều thất bại.
+        Thử lần lượt:
+          1. Cloudflare llama-3.1-8b (free, nhanh)
+          2. Cloudflare llama-3.3-70b (free, mạnh hơn)
+          3. GPT-4o-mini (paid backup)
+          4. Raise → pipeline fallback về rule-based
         """
-        for provider in self.providers:
+        for provider in self.cf_clients + self.fallback_clients:
             try:
-                result = await self._call_provider(provider, question)
-                logger.info(f"[LLMRouter] [{provider['name']}] → tool={result['tool']} | {list(result['kwargs'].keys())}")
+                result = await self._call(provider, question)
+                logger.info(f"[LLMRouter] [{provider['name']}] → tool={result['tool']}")
                 return result
             except Exception as e:
-                logger.warning(f"[LLMRouter] [{provider['name']}] thất bại ({type(e).__name__}), thử provider tiếp theo...")
+                logger.warning(f"[LLMRouter] [{provider['name']}] lỗi ({type(e).__name__}: {e}), thử tiếp...")
                 continue
 
-        # Tất cả provider đều thất bại
-        logger.error("[LLMRouter] Tất cả providers thất bại, fallback về RAG")
-        return {
-            "tool": "search_knowledge_base",
-            "kwargs": {"query_arg": question}
-        }
+        logger.error("[LLMRouter] Tất cả providers thất bại")
+        raise RuntimeError("All LLM router providers failed")
