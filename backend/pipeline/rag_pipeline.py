@@ -145,6 +145,9 @@ class TravelRAGPipeline:
         "địa điểm", "tham quan", "nên đi", "nên ăn", "thắng cảnh",
         "ăn gì", "quán nào", "khách sạn", "homestay", "lưu trú",
         "nổi tiếng", "hot", "check-in", "sưu tầm",
+        # Câu hỏi phù hợp/khuyến nghị kép
+        "phù hợp", "có nên", "nên không", "có thể", "ra ngoài",
+        "ngoài trời", "hoạt động", "đi chơi", "vui chơi",
     }
 
     def _fast_route(self, question: str) -> dict:
