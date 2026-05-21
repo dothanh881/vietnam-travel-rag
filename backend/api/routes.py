@@ -24,7 +24,7 @@ router = APIRouter()
 # ==========================================
 # CONSTANTS FOR INGESTION
 # ==========================================
-DATA_LAKE_DIR = r"G:\My Drive\DataLake_baseknowledge_rag_KTLN\dataset"
+DATA_LAKE_DIR = os.getenv("DATA_LAKE_DIR", "/app/data")
 INPUT_DIR = os.path.join(DATA_LAKE_DIR, "documents")  # Nơi chứa Bản ghi Vàng
 OUTPUT_DIR = os.path.join(DATA_LAKE_DIR, "chunks")    # Nơi xuất Payload
 
@@ -57,14 +57,8 @@ def get_retriever() -> TravelRetriever:
 
 @lru_cache(maxsize=1)
 def get_llm_generator() -> LLMGenerator:
-
-    NGROK_URL = "https://unpatrician-underogatively-bronson.ngrok-free.dev/v1" 
-
     return LLMGenerator(
-        mode="vllm", # Mặc định
-        vllm_model="qwen-vivu", 
-        vllm_base_url=NGROK_URL,
-        vllm_api_key="sk-runpod-key",
+        mode="ollama",
         ollama_model="hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M"
     )
 
