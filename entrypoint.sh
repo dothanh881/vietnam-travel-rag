@@ -1,27 +1,31 @@
 #!/bin/bash
-set -e
 
-echo "🚀 Khởi động Ollama server..."
+echo "Khoi dong Ollama server..."
 ollama serve &
 OLLAMA_PID=$!
 
-# Chờ Ollama sẵn sàng
-echo "⏳ Đợi Ollama khởi động..."
-sleep 5
-until curl -sf http://localhost:7860/ > /dev/null 2>&1; do
-    sleep 2
+# Cho Ollama thoi gian khoi dong (khong dung set -e de tranh thoat som)
+echo "Doi Ollama khoi dong (10 giay)..."
+sleep 10
+
+# Kiem tra Ollama da san sang chua
+MAX_WAIT=60
+WAITED=0
+until curl -sf http://localhost:7860/api/version > /dev/null 2>&1; do
+    if [ $WAITED -ge $MAX_WAIT ]; then
+        echo "Ollama khong khoi dong sau ${MAX_WAIT}s, tiep tuc..."
+        break
+    fi
+    sleep 3
+    WAITED=$((WAITED + 3))
 done
-echo "✅ Ollama đã sẵn sàng!"
+echo "Ollama san sang!"
 
-# Pull model nếu chưa có
+# Pull model
 MODEL="hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M"
-if ! ollama list | grep -q "qwen3-1.7b-vivu"; then
-    echo "📥 Đang tải model: $MODEL ..."
-    ollama pull "$MODEL"
-    echo "✅ Model đã tải xong!"
-else
-    echo "✅ Model đã có sẵn, bỏ qua bước tải!"
-fi
+echo "Dang tai model: $MODEL ..."
+ollama pull "$MODEL"
+echo "Model tai xong!"
 
-# Giữ server chạy
+# Giu server chay
 wait $OLLAMA_PID
