@@ -137,8 +137,13 @@ class LLMGenerator:
         }
 
         if self.mode == "ollama":
-            # Model SFT-only → tắt thinking_budget để tránh output lỗi
-            kwargs["extra_body"] = {"thinking_budget": 0, "keep_alive": "30m"}
+            # Model SFT-only → tắt thinking_budget để tránh output lỗi. Đảm bảo num_predict cao để không bị ngắt chữ.
+            kwargs["extra_body"] = {
+                "thinking_budget": 0, 
+                "keep_alive": "30m",
+                "num_predict": 2048,
+                "num_ctx": 4096
+            }
         elif self.mode == "vllm":
             kwargs["extra_body"] = {"repetition_penalty": 1.05}
 
