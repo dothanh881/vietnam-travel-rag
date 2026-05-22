@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 
-import { Send, Bot, MapPin, Cpu, Zap, Square, Sun, Moon, Menu, X, ChevronLeft, Plus } from 'lucide-react';
+import { Send, Bot, MapPin, Cpu, Zap, Square, Sun, Moon, Menu, X, ChevronLeft, Plus, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -359,8 +359,9 @@ export default function Chat() {
                   : `flex-1 min-w-0 rounded-2xl rounded-tl-sm px-5 py-3 ${bgBotMsg}`
                   }`}>
                   {(m.role === 'assistant' && (m.content === '' || m.content === '🌴 ') && isLoading) ? (
-                    <span className="flex items-center gap-2 h-6 text-[15px] font-medium text-emerald-600 dark:text-emerald-400 animate-pulse whitespace-pre-wrap">
-                      {m.statusText || '🌴 Đang phân tích trả lời câu hỏi....'}
+                    <span className="flex items-center gap-2.5 h-6 text-[14px] font-medium text-emerald-600 dark:text-emerald-400">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                      <span className="animate-pulse">{m.statusText || 'Đang phân tích trả lời câu hỏi...'}</span>
                     </span>
                   ) : (
                     m.role === 'assistant' ? (
