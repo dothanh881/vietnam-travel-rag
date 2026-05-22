@@ -29,6 +29,7 @@ OUTPUT FORMAT (Bạn phải trả về đúng chuẩn JSON này):
     "tham_so_2": "gia_tri"
   }}
 }}
+KHÔNG ĐƯỢC THÊM BẤT KỲ VĂN BẢN NÀO BÊN NGOÀI JSON. CHỈ TRẢ VỀ JSON THUẦN TÚY.
 """
 
 class ReActAgent:
@@ -82,8 +83,10 @@ class ReActAgent:
                 else:
                     start = raw.find('{')
                     end = raw.rfind('}')
-                    if start != -1 and end != -1:
+                    if start != -1 and end != -1 and end >= start:
                         raw = raw[start:end+1]
+                    else:
+                        raise ValueError(f"LLM không trả về JSON hợp lệ. Raw output: {raw[:100]}...")
 
                 return json.loads(raw)
             except Exception as e:

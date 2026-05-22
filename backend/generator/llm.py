@@ -90,7 +90,15 @@ class LLMGenerator:
             "presence_penalty": 0.5
         }
         
-        if self.mode == "vllm":
+        if self.mode == "ollama":
+            kwargs["extra_body"] = {
+                "keep_alive": "30m",
+                "options": {
+                    "num_predict": 2048,
+                    "num_ctx": 8192
+                }
+            }
+        elif self.mode == "vllm":
             kwargs["extra_body"] = {"repetition_penalty": 1.05}
             
         response = active_client.chat.completions.create(**kwargs)
@@ -139,10 +147,11 @@ class LLMGenerator:
         if self.mode == "ollama":
             # Model SFT-only → tắt thinking_budget để tránh output lỗi. Đảm bảo num_predict cao để không bị ngắt chữ.
             kwargs["extra_body"] = {
-                "thinking_budget": 0, 
                 "keep_alive": "30m",
-                "num_predict": 2048,
-                "num_ctx": 4096
+                "options": {
+                    "num_predict": 2048,
+                    "num_ctx": 8192
+                }
             }
         elif self.mode == "vllm":
             kwargs["extra_body"] = {"repetition_penalty": 1.05}
@@ -227,9 +236,11 @@ class LLMGenerator:
             "max_tokens": 128,
             "response_format": {"type": "json_object"},
             "extra_body": {
-                "num_ctx": 2048,
-                "num_predict": 128,
-                "keep_alive": "30m"  # Giữ model warm 30 phút sau lần gọi cuối
+                "keep_alive": "30m",
+                "options": {
+                    "num_ctx": 4096,
+                    "num_predict": 256
+                }
             }
         }
         
