@@ -127,9 +127,8 @@ export async function POST(req: Request) {
                         }
                     }
                 } catch (err) {
-                    controller.enqueue(
-                        new TextEncoder().encode('0:' + JSON.stringify(`⚠️ Lỗi kết nối stream: ${err}`) + '\n')
-                    );
+                    console.error("Stream reading error:", err);
+                    // Không hiển thị lỗi kỹ thuật (như TypeError: terminated) ra UI cho người dùng thấy
                 } finally {
                     // --- LƯU TIN NHẮN CỦA AI VÀO DB NẾU CÓ ĐĂNG NHẬP ---
                     if (userId && dbConversationId && fullAiResponse) {
