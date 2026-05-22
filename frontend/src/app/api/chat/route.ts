@@ -111,6 +111,11 @@ export async function POST(req: Request) {
                                     controller.enqueue(
                                         new TextEncoder().encode('8:' + JSON.stringify([{ type: 'budget_chart', data: parsed.data }]) + '\n')
                                     );
+                                } else if (parsed.type === 'status' && parsed.data) {
+                                    // Gửi trạng thái phân tích động
+                                    controller.enqueue(
+                                        new TextEncoder().encode('8:' + JSON.stringify([{ type: 'status', message: parsed.data }]) + '\n')
+                                    );
                                 } else if (parsed.type === 'error' && parsed.data) {
                                     controller.enqueue(
                                         new TextEncoder().encode('0:' + JSON.stringify(`\n\n🚨 Lỗi: ${parsed.data}`) + '\n')

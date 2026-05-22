@@ -161,50 +161,40 @@ def chat_stream_endpoint(
             generator.mode = request.mode
             
             # 1. Báo cáo trạng thái ngay để mở luồng mượt mà
-            yield f"data: {json.dumps({'type': 'status', 'data': f'* Đang tìm kiếm tài liệu (Chế độ: {generator.mode})...* ⏳'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'data': f'🌴 Đang khởi tạo (Chế độ: {generator.mode})...'})}\n\n"
             
-            # 2. Bắt đầu quá trình RAG — một số tool trả về 3-tuple (stream, chunks, metadata)
             history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
-            result = await pipeline.ask_stream(
+            first_token_lat = None
+            
+            async for payload in pipeline.ask_stream(
                 question=request.query,
                 top_k=request.top_k,
                 destination=target_dest,
                 history=history_dicts
-            )
-            if len(result) == 3:
-                answer_stream, raw_chunks, metadata = result
-            else:
-                answer_stream, raw_chunks = result
-                metadata = None
-            
-            # Gửi Sources
-            sources = []
-            for c in raw_chunks:
-                sources.append({
-                    "text": c.get("text", ""),
-                    "destination": c.get("destination"),
-                    "category": c.get("category"),
-                    "score": float(c.get("score", 0.0)),
-                    "rerank_score": c.get("rerank_score")
-                })
-            yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
-
-            # Nếu có metadata đặc biệt (VD: budget_chart) → gửi trước khi text stream
-            if metadata:
-                yield f"data: {json.dumps(metadata)}\n\n"
-
-            # 2. Bắt đầu đẩy nội dung stream từ LLM về và tính toán thời gian
-            first_token_lat = None
-            async for token in answer_stream:
-                if first_token_lat is None:
-                    first_token_lat = round(time.time() - start_time, 2)
-                    yield f"data: {json.dumps({'type': 'status', 'data': f'*  Tốc độ phản hồi (TTFT): {first_token_lat}s*'})}\n\n"
-                
-                # Đóng gói an toàn để tránh break JSON
-                yield f"data: {json.dumps({'type': 'token', 'data': token})}\n\n"
+            ):
+                if payload["type"] == "status":
+                    yield f"data: {json.dumps({'type': 'status', 'data': payload['data']})}\n\n"
+                elif payload["type"] == "metadata":
+                    sources = []
+                    for c in payload.get("chunks", []):
+                        sources.append({
+                            "text": c.get("text", ""),
+                            "destination": c.get("destination"),
+                            "category": c.get("category"),
+                            "score": float(c.get("score", 0.0)),
+                            "rerank_score": c.get("rerank_score")
+                        })
+                    yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
+                    if payload.get("metadata"):
+                        yield f"data: {json.dumps(payload['metadata'])}\n\n"
+                elif payload["type"] == "token":
+                    if first_token_lat is None:
+                        first_token_lat = round(time.time() - start_time, 2)
+                        yield f"data: {json.dumps({'type': 'status', 'data': f'✨ Đang viết câu trả lời (TTFT: {first_token_lat}s)...'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'token', 'data': payload['data']})}\n\n"
                 
             total_process_time = round(time.time() - start_time, 2)
-            yield f"data: {json.dumps({'type': 'status', 'data': f'*  Tổng thời gian: {total_process_time}s*'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'data': f'✅ Hoàn tất ({total_process_time}s)'})}\n\n"
             yield "data: [DONE]\n\n"
             
         except Exception as e:

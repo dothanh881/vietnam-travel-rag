@@ -16,6 +16,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   budgetData?: any; // Budget chart data nếu có
+  statusText?: string; // Text hiệu ứng động (Streaming status)
 }
 
 interface Conversation {
@@ -151,6 +152,10 @@ export default function Chat() {
                 if (meta.type === 'budget_chart' && meta.data) {
                   setMessages(prev => prev.map(m =>
                     m.id === assistantId ? { ...m, budgetData: meta.data } : m
+                  ));
+                } else if (meta.type === 'status' && meta.message) {
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, statusText: meta.message } : m
                   ));
                 } else if (meta.conversationId) {
                   setConversationId(meta.conversationId);
@@ -354,8 +359,8 @@ export default function Chat() {
                   : `flex-1 min-w-0 rounded-2xl rounded-tl-sm px-5 py-3 ${bgBotMsg}`
                   }`}>
                   {(m.role === 'assistant' && (m.content === '' || m.content === '🌴 ') && isLoading) ? (
-                    <span className="flex items-center gap-2 h-6 text-[15px] font-medium text-emerald-600 dark:text-emerald-400 animate-pulse">
-                      🌴 Đang phân tích trả lời câu hỏi....
+                    <span className="flex items-center gap-2 h-6 text-[15px] font-medium text-emerald-600 dark:text-emerald-400 animate-pulse whitespace-pre-wrap">
+                      {m.statusText || '🌴 Đang phân tích trả lời câu hỏi....'}
                     </span>
                   ) : (
                     m.role === 'assistant' ? (

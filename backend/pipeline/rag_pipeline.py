@@ -322,45 +322,94 @@ class TravelRAGPipeline:
 
     @observe(name="ViVu_RAG_Pipeline")
     async def ask_stream(self, question: str, top_k: int = 5, destination: str = None, history: list = None):
-        """Pipeline chính: ReAct Agent/LLM Router → Tool(s) song song → LLM tổng hợp"""
+        """Pipeline chính: Fast Router → [ReAct Agent] → Thực thi Tool → LLM Stream"""
         import asyncio
 
         logger.info(f"[AGENT] Câu hỏi: '{question}'")
+        yield {"type": "status", "data": "⚡ Đang phân tích ý định (Fast Router)..."}
 
-        # ROUTING: Dùng ReAct Agent với History (ưu tiên) -> Fallback Rule-based
+        # ROUTING: Dùng LLMRouter làm màng lọc nhanh (Fast Route)
+        tool_names = []
+        kwargs = {}
+        react_used = False
         try:
-            react_out = await self.react_agent.run(question, history)
-            action = react_out.get("action", "search_knowledge_base")
-            action_input = react_out.get("action_input", {})
-            logger.info(f"[AGENT] ReActAgent -> {action} | {list(action_input.keys())}")
+            route_out = await self.llm_router.route(question)
+            tool_names = route_out.get("tools", ["search_knowledge_base"])
+            kwargs = route_out.get("kwargs", {})
             
-            if action == "ask_user":
-                stream = self.llm_generator.generate_direct_stream(action_input.get("question", "Xin lỗi, tôi cần thêm thông tin. Bạn có thể nói rõ hơn không?"))
-                return stream, []
-            elif action == "finish":
-                stream = self.llm_generator.generate_direct_stream(action_input.get("answer", "Tôi đã tổng hợp thông tin xong."))
-                return stream, []
+            # Kiểm tra xem có cần ReAct không (tác vụ lập kế hoạch hoặc hỏi nhiều tool)
+            complex_tools = {"plan_itinerary", "estimate_budget", "plan_full_trip", "search_flights"}
+            if any(t in complex_tools for t in tool_names) or len(tool_names) > 1:
+                react_used = True
+                yield {"type": "status", "data": "🧠 Tác vụ phức tạp, đang suy luận nhiều bước (ReAct)..."}
+                logger.info("[FAST-ROUTER] Phát hiện tác vụ phức tạp -> Kích hoạt ReAct Agent")
             else:
-                tool_names = [action]
-                kwargs = action_input
-                
+                tool_label = "Tìm kiếm thông tin" if tool_names[0] == "search_knowledge_base" else "Kiểm tra thời tiết"
+                yield {"type": "status", "data": f"🔎 Câu hỏi đơn giản, {tool_label}..."}
+                logger.info(f"[FAST-ROUTER] Bypass ReAct -> Gọi thẳng tool: {tool_names[0]}")
         except Exception as e:
-            logger.error(f"[AGENT] ReActAgent thất bại: {e}. Fallback to Rule-based.")
+            logger.error(f"[FAST-ROUTER] Lỗi: {e}, kích hoạt Fallback Regex...")
             fb = self._fast_route(question)
             tool_names = [fb.get("tool", "search_knowledge_base")]
             kwargs = fb.get("kwargs", {})
+            yield {"type": "status", "data": "🔎 Đang tìm kiếm thông tin cơ bản..."}
+
+        # Nếu cần suy luận phức tạp (ReAct)
+        if react_used:
+            try:
+                # Chạy ReAct Agent
+                react_out = await self.react_agent.run(question, history)
+                action = react_out.get("action", "search_knowledge_base")
+                action_input = react_out.get("action_input", {})
+                logger.info(f"[AGENT] ReActAgent quyết định: {action} | {action_input}")
+                
+                if action == "ask_user":
+                    yield {"type": "metadata", "chunks": [], "metadata": None}
+                    stream = self.llm_generator.generate_direct_stream(action_input.get("question", "Xin lỗi, tôi cần thêm thông tin. Bạn có thể nói rõ hơn không?"))
+                    async for token in stream: yield {"type": "token", "data": token}
+                    return
+                elif action == "finish":
+                    yield {"type": "metadata", "chunks": [], "metadata": None}
+                    stream = self.llm_generator.generate_direct_stream(action_input.get("answer", "Tôi đã tổng hợp thông tin xong."))
+                    async for token in stream: yield {"type": "token", "data": token}
+                    return
+                else:
+                    tool_names = [action]
+                    kwargs = action_input
+                    yield {"type": "status", "data": f"🛠️ Đang thực thi công cụ: {action}..."}
+            except Exception as e:
+                logger.error(f"[AGENT] ReActAgent thất bại: {e}. Quay về luồng tool mặc định.")
+                yield {"type": "status", "data": "⚠️ Suy luận thất bại, đang dùng công cụ mặc định..."}
 
         logger.info(f"[AGENT] Thực thi Tool -> {tool_names} | {list(kwargs.keys())}")
 
-        # ── Single tool (luồng hiện tại) ──────────────────────────
+        all_chunks = []
+        all_metadata = {}
+        tool_contexts = {}
+
+        # ── Single tool ──────────────────────────
         if len(tool_names) == 1:
             tool_name = tool_names[0]
             if tool_name in self.tools:
-                return await self.tools[tool_name](
+                result = await self.tools[tool_name](
                     question=question, destination=destination, top_k=top_k, **kwargs
                 )
-            logger.error(f"[AGENT] Tool '{tool_name}' không tồn tại!")
-            return self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này."), []
+                if len(result) == 3:
+                    stream, chunks, meta = result
+                    if meta: all_metadata.update(meta)
+                else:
+                    stream, chunks = result[:2]
+                
+                if chunks: all_chunks.extend(chunks)
+                yield {"type": "metadata", "chunks": all_chunks, "metadata": all_metadata if all_metadata else None}
+                async for token in stream: yield {"type": "token", "data": token}
+                return
+            else:
+                logger.error(f"[AGENT] Tool '{tool_name}' không tồn tại!")
+                yield {"type": "metadata", "chunks": [], "metadata": None}
+                stream = self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này.")
+                async for token in stream: yield {"type": "token", "data": token}
+                return
 
         # ── Multi-tool: chạy song song, merge kết quả ─────────────
         logger.info(f"[AGENT] MULTI-TOOL: chạy song song {tool_names}")
@@ -370,15 +419,14 @@ class TravelRAGPipeline:
                 tasks.append(self.tools[tname](
                     question=question, destination=destination, top_k=top_k, **kwargs
                 ))
+        
         if not tasks:
-            return self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này."), []
+            yield {"type": "metadata", "chunks": [], "metadata": None}
+            stream = self.llm_generator.generate_direct_stream("Xin lỗi, tôi chưa hiểu câu hỏi này.")
+            async for token in stream: yield {"type": "token", "data": token}
+            return
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Gộp chunks và metadata từ tất cả tools
-        all_chunks = []
-        all_metadata = {}
-        tool_contexts = {}  # {tool_name: data} để truyền vào LLM
 
         for tname, result in zip(tool_names, results):
             if isinstance(result, Exception):
@@ -394,15 +442,12 @@ class TravelRAGPipeline:
             if chunks:
                 all_chunks.extend(chunks)
 
-        # Tổng hợp câu trả lời kết hợp
+        yield {"type": "metadata", "chunks": all_chunks, "metadata": all_metadata if all_metadata else None}
+        
         stream = self.llm_generator.generate_multi_tool_stream(
             question=question,
             chunks=all_chunks,
             tool_contexts=tool_contexts,
             tool_names=tool_names
         )
-
-        # Nếu có metadata (VD: budget_chart), trả về 3-tuple
-        if all_metadata:
-            return stream, all_chunks, all_metadata
-        return stream, all_chunks
+        async for token in stream: yield {"type": "token", "data": token}

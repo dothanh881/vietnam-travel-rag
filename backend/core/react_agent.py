@@ -113,5 +113,18 @@ class ReActAgent:
         # Simulate local ReAct single step logic here for routing
         # (Để đơn giản, router sẽ gọi agent.run để lấy next action, hoặc pipeline tự quản lý vòng lặp)
         
+        import time
+        t0 = time.time()
+        logger.info(f"[ReActAgent] Bắt đầu suy luận vòng lặp cho câu hỏi: {user_query}")
+        
         next_action_json = await self._call_llm(messages)
+        
+        t1 = time.time()
+        thought = next_action_json.get("thought", "")
+        action = next_action_json.get("action", "")
+        
+        logger.info(f"[ReActAgent] Hoàn thành suy luận trong {t1 - t0:.2f}s")
+        logger.info(f" └─ Thought: {thought}")
+        logger.info(f" └─ Action:  {action}")
+        
         return next_action_json
