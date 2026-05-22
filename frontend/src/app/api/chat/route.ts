@@ -2,6 +2,10 @@
 // Tăng timeout lên 60s để hỗ trợ LLM streaming (mặc định Vercel chỉ 10s)
 export const maxDuration = 60;
 
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]/route";
+import prisma from "@/lib/prisma";
+
 export async function POST(req: Request) {
     try {
         const { messages, mode = "vllm", top_k = 3, conversationId: reqConversationId } = await req.json();
@@ -12,9 +16,36 @@ export async function POST(req: Request) {
             return makeStreamResponse('Thiếu tin nhắn người dùng.');
         }
 
+        const session = await getServerSession(authOptions);
+        const userId = session?.user ? (session.user as any).id : null;
+
         // Tạo biến session (Hỗ trợ Guest giữ context)
         let dbConversationId = reqConversationId;
-        if (!dbConversationId) {
+        
+        // --- LƯU VÀO DATABASE (NẾU ĐĂNG NHẬP) ---
+        if (userId) {
+            if (!dbConversationId) {
+                // Cuộc trò chuyện mới
+                const title = latestMessage.content.substring(0, 45) + (latestMessage.content.length > 45 ? '...' : '');
+                const newConv = await prisma.conversation.create({
+                    data: {
+                        userId: userId,
+                        title: title,
+                    }
+                });
+                dbConversationId = newConv.id;
+            }
+            
+            // Lưu tin nhắn của User
+            await prisma.message.create({
+                data: {
+                    conversationId: dbConversationId,
+                    role: 'user',
+                    content: latestMessage.content
+                }
+            });
+        } else if (!dbConversationId) {
+            // Khách vãn lai
             dbConversationId = "guest_" + crypto.randomUUID();
         }
 
@@ -25,6 +56,7 @@ export async function POST(req: Request) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 query: latestMessage.content,
+                history: messages.slice(0, -1),
                 mode: mode,
                 top_k: top_k,
                 session_id: dbConversationId
@@ -47,6 +79,7 @@ export async function POST(req: Request) {
                 const reader = backendRes.body!.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
+                let fullAiResponse = '';
 
                 try {
                     while (true) {
@@ -69,6 +102,7 @@ export async function POST(req: Request) {
 
                                 if (parsed.type === 'token' && parsed.data) {
                                     // Chuẩn Vercel AI Data Stream: 0:"text"\n
+                                    fullAiResponse += parsed.data;
                                     controller.enqueue(
                                         new TextEncoder().encode('0:' + JSON.stringify(parsed.data) + '\n')
                                     );
@@ -92,6 +126,21 @@ export async function POST(req: Request) {
                         new TextEncoder().encode('0:' + JSON.stringify(`⚠️ Lỗi kết nối stream: ${err}`) + '\n')
                     );
                 } finally {
+                    // --- LƯU TIN NHẮN CỦA AI VÀO DB NẾU CÓ ĐĂNG NHẬP ---
+                    if (userId && dbConversationId && fullAiResponse) {
+                        try {
+                            await prisma.message.create({
+                                data: {
+                                    conversationId: dbConversationId,
+                                    role: 'assistant',
+                                    content: fullAiResponse
+                                }
+                            });
+                        } catch (dbErr) {
+                            console.error("Lỗi lưu tin nhắn AI:", dbErr);
+                        }
+                    }
+
                     // Gửi gói kết thúc BẮT BUỘC theo Vercel AI Data Stream Protocol v1
                     controller.enqueue(
                         new TextEncoder().encode('e:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n')

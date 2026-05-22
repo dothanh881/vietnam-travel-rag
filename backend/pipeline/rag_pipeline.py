@@ -7,6 +7,7 @@ from core.tools_exec import fetch_real_weather
 from core.tools_exec_budget import estimate_budget
 from core.tool_formatters import format_budget_text, format_weather_text
 from core.llm_router import LLMRouter
+from core.react_agent import ReActAgent
 
 logger = get_logger(__name__)
 
@@ -16,6 +17,7 @@ class TravelRAGPipeline:
         self.llm_generator = llm_generator
         self.reranker = reranker
         self.llm_router = LLMRouter()
+        self.react_agent = ReActAgent()
         
         self.tools = {
             "search_knowledge_base": self._tool_search_kb,
@@ -319,22 +321,36 @@ class TravelRAGPipeline:
         return self.llm_generator.generate_answer(question, chunks), chunks
 
     @observe(name="ViVu_RAG_Pipeline")
-    async def ask_stream(self, question: str, top_k: int = 5, destination: str = None):
-        """Pipeline chính: LLM Router → Tool(s) song song → LLM tổng hợp"""
+    async def ask_stream(self, question: str, top_k: int = 5, destination: str = None, history: list = None):
+        """Pipeline chính: ReAct Agent/LLM Router → Tool(s) song song → LLM tổng hợp"""
         import asyncio
 
         logger.info(f"[AGENT] Câu hỏi: '{question}'")
 
-        # ROUTING: LLM Router (Cloudflare/GPT) → fallback rule-based
+        # ROUTING: Dùng ReAct Agent với History (ưu tiên) -> Fallback Rule-based
         try:
-            tool_call = await self.llm_router.route(question)
-        except Exception:
+            react_out = await self.react_agent.run(question, history)
+            action = react_out.get("action", "search_knowledge_base")
+            action_input = react_out.get("action_input", {})
+            logger.info(f"[AGENT] ReActAgent -> {action} | {list(action_input.keys())}")
+            
+            if action == "ask_user":
+                stream = self.llm_generator.generate_direct_stream(action_input.get("question", "Xin lỗi, tôi cần thêm thông tin. Bạn có thể nói rõ hơn không?"))
+                return stream, []
+            elif action == "finish":
+                stream = self.llm_generator.generate_direct_stream(action_input.get("answer", "Tôi đã tổng hợp thông tin xong."))
+                return stream, []
+            else:
+                tool_names = [action]
+                kwargs = action_input
+                
+        except Exception as e:
+            logger.error(f"[AGENT] ReActAgent thất bại: {e}. Fallback to Rule-based.")
             fb = self._fast_route(question)
-            tool_call = {"tools": [fb.get("tool", "search_knowledge_base")], "kwargs": fb.get("kwargs", {})}
+            tool_names = [fb.get("tool", "search_knowledge_base")]
+            kwargs = fb.get("kwargs", {})
 
-        tool_names = tool_call.get("tools", ["search_knowledge_base"])
-        kwargs = tool_call.get("kwargs", {})
-        logger.info(f"[AGENT] Route → {tool_names} | {list(kwargs.keys())}")
+        logger.info(f"[AGENT] Thực thi Tool -> {tool_names} | {list(kwargs.keys())}")
 
         # ── Single tool (luồng hiện tại) ──────────────────────────
         if len(tool_names) == 1:

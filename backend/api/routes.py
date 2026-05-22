@@ -164,10 +164,12 @@ def chat_stream_endpoint(
             yield f"data: {json.dumps({'type': 'status', 'data': f'* Đang tìm kiếm tài liệu (Chế độ: {generator.mode})...* ⏳'})}\n\n"
             
             # 2. Bắt đầu quá trình RAG — một số tool trả về 3-tuple (stream, chunks, metadata)
+            history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
             result = await pipeline.ask_stream(
                 question=request.query,
                 top_k=request.top_k,
-                destination=target_dest
+                destination=target_dest,
+                history=history_dicts
             )
             if len(result) == 3:
                 answer_stream, raw_chunks, metadata = result

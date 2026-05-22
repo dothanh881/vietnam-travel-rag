@@ -70,7 +70,9 @@ FLIGHT_ESTIMATE = {
 
 
 def estimate_budget(destination: str, num_days: int, num_people: int = 1,
-                    travel_style: str = "mid", include_flight: bool = True) -> dict:
+                    travel_style: str = "mid", include_flight: bool = True,
+                    transport_cost_per_person: int = None,
+                    additional_entrance_fees: int = 0) -> dict:
     """
     Ước tính ngân sách chuyến đi du lịch Việt Nam.
     Returns dict với breakdown chi tiết và tổng cộng.
@@ -97,13 +99,21 @@ def estimate_budget(destination: str, num_days: int, num_people: int = 1,
         "entrance_fee": int(tier["entrance_fee"]),
         "misc": int(tier["misc"]),
     }
+    
+    # Cộng thêm phụ phí tham quan (nếu có vé combo được agent lấy từ RAG)
+    if additional_entrance_fees > 0:
+        # Nếu đã có phí cứng, ta cộng thêm vào tổng hoặc thay thế phí mặc định 1 ngày
+        # Đơn giản nhất là chia đều cho số ngày để hiển thị breakdown
+        daily["entrance_fee"] += (additional_entrance_fees // num_days)
 
     # Tổng chi phí sinh hoạt (người * ngày * danh mục)
     total_daily = sum(daily.values()) * num_days * num_people
 
-    # Vé máy bay (1 lần khứ hồi * số người)
+    # Vé máy bay/di chuyển (1 lần khứ hồi * số người)
     flight_cost = 0
-    if include_flight:
+    if transport_cost_per_person is not None:
+        flight_cost = transport_cost_per_person * num_people
+    elif include_flight:
         for key, cost in FLIGHT_ESTIMATE.items():
             if key in dest_lower:
                 flight_cost = cost * num_people

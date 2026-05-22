@@ -37,6 +37,35 @@ AVAILABLE_TOOLS = [
             },
             "required": ["location"]
         }
+    },
+    {
+        "name": "search_transport",
+        "description": "Dùng để ước tính chi phí di chuyển (vé máy bay, xe khách, tàu hỏa) giữa 2 thành phố.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "from_city": {"type": "string", "description": "Thành phố xuất phát"},
+                "to_city": {"type": "string", "description": "Thành phố đến"},
+                "transport_type": {"type": "string", "description": "Loại phương tiện: 'flight', 'bus', hoặc 'train' (mặc định là 'flight')"}
+            },
+            "required": ["from_city", "to_city"]
+        }
+    },
+    {
+        "name": "estimate_budget",
+        "description": "Dùng để ước lượng ngân sách chuyến đi du lịch cho 1 hoặc nhiều người.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destination": {"type": "string", "description": "Điểm đến (Thành phố/Tỉnh)"},
+                "num_days": {"type": "integer", "description": "Số ngày du lịch"},
+                "num_people": {"type": "integer", "description": "Số người tham gia (mặc định 1)"},
+                "travel_style": {"type": "string", "description": "Kiểu du lịch: 'budget', 'mid', 'luxury'"},
+                "transport_cost_per_person": {"type": "integer", "description": "Chi phí di chuyển khứ hồi/người (Lấy từ search_transport nếu có)"},
+                "additional_entrance_fees": {"type": "integer", "description": "Phí tham quan đặc biệt cộng thêm (VD vé VinWonders 950k) lấy từ RAG."}
+            },
+            "required": ["destination", "num_days"]
+        }
     }
 ]
 

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import dynamic from 'next/dynamic';
+import { useSession, signIn, signOut } from "next-auth/react";
 
 const BudgetChart = dynamic(() => import('@/components/BudgetChart'), { ssr: false });
 
@@ -31,8 +32,9 @@ const SUGGESTIONS = [
 ];
 
 export default function Chat() {
-  const isSignedIn = false;
-  const user = null;
+  const { data: session, status } = useSession();
+  const isSignedIn = status === "authenticated";
+  const user = session?.user;
   const [mounted, setMounted] = useState(false);
   const [dark, setDark] = useState(false);
   const [mode, setMode] = useState<'vllm' | 'ollama'>('ollama');
@@ -253,7 +255,13 @@ export default function Chat() {
           <div className="pt-2 space-y-0.5">
             <p className={`text-[10px] font-semibold uppercase tracking-widest mb-2 px-2 mt-2 ${textSecondary}`}>Lịch sử</p>
             {!isSignedIn ? (
-              <p className={`text-xs px-3 py-2 ${textSecondary}`}>Tính năng lưu lịch sử đang tạm tắt ở bản Demo.</p>
+              <div className="px-3 py-2">
+                <p className={`text-xs mb-3 ${textSecondary}`}>Đăng nhập để lưu lịch sử vĩnh viễn.</p>
+                <button onClick={() => signIn('google')} className="w-full flex items-center justify-center gap-2 py-2 text-xs font-medium bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-4 h-4" alt="Google" />
+                  Đăng nhập Google
+                </button>
+              </div>
             ) : conversations.length === 0 ? (
               <p className={`text-xs px-3 py-2 ${textSecondary}`}>Chưa có cuộc trò chuyện nào.</p>
             ) : (
@@ -281,6 +289,11 @@ export default function Chat() {
           {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           {dark ? 'Chế độ sáng' : 'Chế độ tối'}
         </button>
+        {isSignedIn && (
+          <button onClick={() => signOut()} className={`mt-2 w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10`}>
+            Đăng xuất
+          </button>
+        )}
         {/* Bottom controls */}
 
       </aside>
