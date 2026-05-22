@@ -190,11 +190,14 @@ def chat_stream_endpoint(
                 elif payload["type"] == "token":
                     if first_token_lat is None:
                         first_token_lat = round(time.time() - start_time, 2)
-                        yield f"data: {json.dumps({'type': 'status', 'data': f'✨ Đang viết câu trả lời (TTFT: {first_token_lat}s)...'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'status', 'data': f'✨ Đang viết câu trả lời...'})}\n\n"
+                        import logging
+                        logging.getLogger(__name__).info(f"TTFT: {first_token_lat}s")
                     yield f"data: {json.dumps({'type': 'token', 'data': payload['data']})}\n\n"
                 
             total_process_time = round(time.time() - start_time, 2)
-            yield f"data: {json.dumps({'type': 'status', 'data': f'✅ Hoàn tất ({total_process_time}s)'})}\n\n"
+            import logging
+            logging.getLogger(__name__).info(f"Hoàn tất trả lời trong {total_process_time}s")
             yield "data: [DONE]\n\n"
             
         except Exception as e:
