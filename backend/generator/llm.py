@@ -414,12 +414,11 @@ YÊU CẦU: Trả lời tự nhiên, thân thiện. Tổng hợp các thông tin
                 continue
 
             text_content = text_content.replace("###", "")
-            text_content = re.sub(r'\d+(\.\d+)+', '', text_content)
+            # Bỏ regex xóa \d+.\d+ vì nó xóa mất giá tiền (VD: 20.000)
             text_content = re.sub(r'Ngày \d+:?', '', text_content)
             text_content = re.sub(r'(Sáng|Trưa|Chiều|Tối):', '', text_content)
 
-            if "Nội dung: " in text_content:
-                text_content = text_content.split("Nội dung: ", 1)[-1].strip()
+            # KHÔNG ĐƯỢC split "Nội dung: " vì nó sẽ vứt bỏ phần "[Ngữ cảnh... Giá tham khảo]" ở đầu câu!
 
             parts.append(f"- {text_content}")
 
