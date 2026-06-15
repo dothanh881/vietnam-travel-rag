@@ -8,7 +8,7 @@ import prisma from "@/lib/prisma";
 
 export async function POST(req: Request) {
     try {
-        const { messages, mode = "vllm", top_k = 3, conversationId: reqConversationId } = await req.json();
+        const { messages, mode = "vllm", top_k = 2, conversationId: reqConversationId } = await req.json();
 
         // Lấy tin nhắn mới nhất
         const latestMessage = messages[messages.length - 1];

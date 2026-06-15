@@ -94,8 +94,8 @@ class LLMGenerator:
             kwargs["extra_body"] = {
                 "keep_alive": "30m",
                 "options": {
-                    "num_predict": 2048,
-                    "num_ctx": 8192
+                    "num_predict": 512,
+                    "num_ctx": 3072
                 }
             }
         elif self.mode == "vllm":
@@ -149,8 +149,8 @@ class LLMGenerator:
             kwargs["extra_body"] = {
                 "keep_alive": "30m",
                 "options": {
-                    "num_predict": 2048,
-                    "num_ctx": 8192
+                    "num_predict": 512,
+                    "num_ctx": 3072
                 }
             }
         elif self.mode == "vllm":
