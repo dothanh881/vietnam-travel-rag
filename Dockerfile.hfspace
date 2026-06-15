@@ -3,9 +3,18 @@ FROM ollama/ollama:latest
 # Cấu hình môi trường HuggingFace Spaces
 ENV OLLAMA_HOST=0.0.0.0:7860
 ENV OLLAMA_MODELS=/.ollama/models
+# Tối ưu hóa cho CPU
+ENV OLLAMA_NUM_PARALLEL=1
+ENV OLLAMA_MAX_VRAM=0
 
 # Cấp quyền đọc/ghi cho user mặc định (1000) của HF Spaces
 RUN mkdir -p /.ollama/models && chmod -R 777 /.ollama
+
+# NƯỚNG (BAKE) TRỰC TIẾP MODEL VÀO IMAGE TRONG LÚC BUILD
+# Điều này giúp server khởi động cực nhanh (chỉ 1-2 giây) thay vì phải pull model mỗi lần ngủ dậy
+RUN nohup bash -c "OLLAMA_HOST=0.0.0.0:11434 ollama serve &" && \
+    sleep 5 && \
+    OLLAMA_HOST=0.0.0.0:11434 ollama pull hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
