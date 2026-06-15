@@ -11,10 +11,11 @@ ENV OLLAMA_MAX_VRAM=0
 RUN mkdir -p /.ollama/models && chmod -R 777 /.ollama
 
 # NƯỚNG (BAKE) TRỰC TIẾP MODEL VÀO IMAGE TRONG LÚC BUILD
-# Điều này giúp server khởi động cực nhanh (chỉ 1-2 giây) thay vì phải pull model mỗi lần ngủ dậy
-RUN nohup bash -c "OLLAMA_HOST=0.0.0.0:11434 ollama serve &" && \
+# Thêm lệnh kill $pid để kết thúc tiến trình sau khi tải xong, tránh bị treo lúc Build
+RUN OLLAMA_HOST=0.0.0.0:11434 ollama serve & pid=$! && \
     sleep 5 && \
-    OLLAMA_HOST=0.0.0.0:11434 ollama pull hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M
+    OLLAMA_HOST=0.0.0.0:11434 ollama pull hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M && \
+    kill $pid
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
