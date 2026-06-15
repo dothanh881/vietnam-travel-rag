@@ -14,7 +14,7 @@ RUN mkdir -p /.ollama/models && chmod -R 777 /.ollama
 # Thêm lệnh kill $pid để kết thúc tiến trình sau khi tải xong, tránh bị treo lúc Build
 RUN OLLAMA_HOST=0.0.0.0:11434 ollama serve & pid=$! && \
     sleep 5 && \
-    OLLAMA_HOST=0.0.0.0:11434 ollama pull hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M && \
+    OLLAMA_HOST=0.0.0.0:11434 ollama pull hf.co/thanhdo881/qwen3-1.7b-vivu-travel-vn-GGUF:Q4_K_M > /dev/null 2>&1 && \
     kill $pid
 
 # Copy entrypoint script
