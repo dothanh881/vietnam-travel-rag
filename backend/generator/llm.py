@@ -85,16 +85,14 @@ class LLMGenerator:
             "messages": messages,
             "temperature": temp,
             "max_tokens": 2048,
-            "stop": ["<|im_end|>", "<|endoftext|>"],
-            "frequency_penalty": 0.5,
-            "presence_penalty": 0.5
+            "stop": ["<|im_end|>", "<|endoftext|>"]
         }
         
         if self.mode == "ollama":
             kwargs["extra_body"] = {
                 "keep_alive": "30m",
                 "options": {
-                    "num_predict": 512,
+                    "num_predict": 1024,
                     "num_ctx": 3072
                 }
             }
@@ -139,9 +137,7 @@ class LLMGenerator:
             "stream": True,
             "temperature": temp,
             "max_tokens": 2048,
-            "stop": ["<|im_end|>", "<|endoftext|>"],
-            "frequency_penalty": 0.5,
-            "presence_penalty": 0.5
+            "stop": ["<|im_end|>", "<|endoftext|>"]
         }
 
         if self.mode == "ollama":
@@ -149,7 +145,7 @@ class LLMGenerator:
             kwargs["extra_body"] = {
                 "keep_alive": "30m",
                 "options": {
-                    "num_predict": 512,
+                    "num_predict": 1024,
                     "num_ctx": 3072
                 }
             }
